@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>TPDb Plex Poster Picker</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="brandMark">PP</div>
+        <div>
+          <h1>Poster Picker</h1>
+          <p class="muted">Plex library posters from The Poster Database.</p>
+        </div>
+      </div>
+
+      <form id="configForm" class="panel">
+        <div class="panelHeader">
+          <span>Connection</span>
+          <span id="connectionState" class="pill">Not configured</span>
+        </div>
+        <label>
+          Plex URL
+          <input id="plexUrl" name="plex_url" placeholder="http://127.0.0.1:32400" autocomplete="off" />
+        </label>
+        <label>
+          Plex token
+          <input id="plexToken" name="plex_token" type="password" autocomplete="off" />
+        </label>
+        <label>
+          Path mapping
+          <textarea id="pathMappings" rows="4" placeholder="/plex/path => /local/path"></textarea>
+        </label>
+        <button type="submit">Save connection</button>
+      </form>
+
+      <div class="panel">
+        <div class="panelHeader">
+          <span>Library</span>
+          <span id="libraryCount" class="pill">0 loaded</span>
+        </div>
+        <label>
+          Library
+          <select id="librarySelect"></select>
+        </label>
+        <button id="loadLibraries" type="button">Sync libraries</button>
+      </div>
+    </aside>
+
+    <main class="workspace">
+      <section class="toolbar">
+        <div class="searchWrap">
+          <span>Search</span>
+          <input id="itemFilter" placeholder="Filter movies and shows" />
+        </div>
+        <button id="refreshItems" class="secondary" type="button">Refresh</button>
+        <div id="status" class="status" role="status"></div>
+      </section>
+
+      <section class="content">
+        <div class="items">
+          <div class="sectionHeader">
+            <div>
+              <div class="sectionTitle">Plex items</div>
+              <div id="itemCount" class="subtle">No library selected</div>
+            </div>
+          </div>
+          <div id="itemsList" class="list empty">Connect Plex to load your libraries.</div>
+        </div>
+
+        <div class="posters">
+          <div class="posterHeader">
+            <div>
+              <div class="sectionTitle">TPDb posters</div>
+              <h2 id="selectedTitle">Select an item</h2>
+              <p id="selectedMeta" class="subtle">Choose a movie or show to begin.</p>
+            </div>
+            <button id="searchTpdb" type="button" disabled>Find posters</button>
+          </div>
+          <div class="posterControls">
+            <label>
+              TPDb search
+              <input id="tpdbSearchTerm" placeholder="Search title" disabled />
+            </label>
+            <label>
+              Creator filter
+              <input id="creatorFilter" placeholder="Filter by creator" disabled />
+            </label>
+          </div>
+          <div id="targetList" class="targets"></div>
+          <div id="posterGrid" class="grid empty">Poster choices will appear here.</div>
+        </div>
+      </section>
+    </main>
+
+    <script src="/app.js" type="module"></script>
+  </body>
+</html>

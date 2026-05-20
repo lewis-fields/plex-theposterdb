@@ -1,0 +1,62 @@
+# TPDb Plex Poster Picker
+
+A local web app for choosing posters from The Poster Database and applying them to Plex movie and TV libraries.
+
+The app connects to Plex, lists movie and show libraries, searches public TPDb pages for poster choices, downloads the selected poster into the item folder as `poster.jpg`, and asks Plex to refresh that specific item.
+
+## Important TPDb note
+
+The Poster Database does not currently expose a supported public search API. This app uses public TPDb pages and image endpoints, so TPDb layout changes can break search or poster extraction. Keep usage personal and reasonable.
+
+## Run
+
+```bash
+python3 server.py
+```
+
+Open:
+
+```text
+http://127.0.0.1:8765
+```
+
+To use another port:
+
+```bash
+PORT=9000 python3 server.py
+```
+
+## Configure
+
+In the app sidebar:
+
+- `Plex URL`: usually `http://127.0.0.1:32400` if this runs on the Plex server.
+- `Plex token`: your Plex authentication token.
+- `Path mapping`: optional, one mapping per line, using `=>`.
+
+Example path mapping:
+
+```text
+/data/media => /Volumes/Media
+```
+
+Use mappings when Plex reports media paths that differ from the paths visible to this app. If Plex runs in Docker, this is commonly required.
+
+## Poster filenames
+
+The app writes selected posters as:
+
+```text
+poster.jpg
+```
+
+or `poster.png` / `poster.webp` if TPDb serves that format.
+
+For typical Plex local assets:
+
+- Movies: saves beside the movie file.
+- Shows: saves in the show folder exposed by Plex.
+
+## Plex token
+
+Plex documents several ways to find your token, including from an authenticated Plex Web request. Treat it like a password because it grants access to your server.
