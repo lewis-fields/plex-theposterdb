@@ -1,6 +1,8 @@
 const state = {
   libraries: [],
   items: [],
+  seasonsByShow: {},
+  loadingSeasons: new Set(),
   posters: [],
   selectedItem: null,
   selectedTargetUrl: "",
@@ -123,9 +125,24 @@ async function loadItems() {
   setStatus("Loading Plex items...");
   const payload = await api(`/api/items?section=${encodeURIComponent(section)}`);
   state.items = payload.items;
+  state.seasonsByShow = {};
+  state.loadingSeasons = new Set();
   renderItems();
   clearPosterPane();
   setStatus(`${state.items.length} items loaded.`);
+}
+
+async function loadSeasons(show) {
+  if (state.seasonsByShow[show.ratingKey] || state.loadingSeasons.has(show.ratingKey)) return;
+  state.loadingSeasons.add(show.ratingKey);
+  renderItems();
+  try {
+    const payload = await api(`/api/seasons?show=${encodeURIComponent(show.ratingKey)}`);
+    state.seasonsByShow[show.ratingKey] = payload.seasons;
+  } finally {
+    state.loadingSeasons.delete(show.ratingKey);
+    renderItems();
+  }
 }
 
 function renderItems() {
@@ -158,6 +175,36 @@ function renderItems() {
     `;
     row.addEventListener("click", () => selectItem(item));
     elements.itemsList.append(row);
+    if (item.type === "show") {
+      renderSeasonRows(item);
+    }
+  }
+}
+
+function renderSeasonRows(show) {
+  const seasons = state.seasonsByShow[show.ratingKey];
+  if (state.loadingSeasons.has(show.ratingKey)) {
+    const loading = document.createElement("div");
+    loading.className = "seasonHint";
+    loading.textContent = "Loading seasons...";
+    elements.itemsList.append(loading);
+    return;
+  }
+  if (!seasons) return;
+  for (const season of seasons) {
+    const row = document.createElement("button");
+    row.type = "button";
+    row.className = "itemRow seasonRow";
+    row.classList.toggle("active", state.selectedItem?.ratingKey === season.ratingKey);
+    row.innerHTML = `
+      <span class="itemText">
+        <strong>${escapeHtml(season.title)}</strong>
+        <span>${escapeHtml(season.folder || season.file || "No season folder exposed")}</span>
+      </span>
+      <span class="itemMeta">${season.index === "0" ? "Specials" : `S${String(season.index || "").padStart(2, "0")}`}</span>
+    `;
+    row.addEventListener("click", () => selectItem(season));
+    elements.itemsList.append(row);
   }
 }
 
@@ -165,9 +212,10 @@ function selectItem(item) {
   state.selectedItem = item;
   state.selectedTargetUrl = "";
   state.posters = [];
-  elements.selectedTitle.textContent = `${item.title}${item.year ? ` (${item.year})` : ""}`;
-  elements.selectedMeta.textContent = `${item.type === "show" ? "TV show" : "Movie"}${item.file ? ` · ${item.file}` : ""}`;
-  elements.tpdbSearchTerm.value = item.title;
+  const displayTitle = item.type === "season" ? `${item.parentTitle} · ${item.title}` : `${item.title}${item.year ? ` (${item.year})` : ""}`;
+  elements.selectedTitle.textContent = displayTitle;
+  elements.selectedMeta.textContent = selectedItemMeta(item);
+  elements.tpdbSearchTerm.value = item.searchTitle || item.parentTitle || item.title;
   elements.creatorFilter.value = "";
   elements.searchTpdb.disabled = false;
   elements.tpdbSearchTerm.disabled = false;
@@ -175,6 +223,9 @@ function selectItem(item) {
   elements.targetList.innerHTML = "";
   elements.posterGrid.innerHTML = '<div class="emptyState">Search TPDb to load poster choices.</div>';
   elements.posterGrid.classList.add("empty");
+  if (item.type === "show") {
+    run(() => loadSeasons(item));
+  }
   renderItems();
 }
 
@@ -211,13 +262,15 @@ function renderTargets(targets) {
 }
 
 async function loadPosters(url, activeButton) {
-  state.selectedTargetUrl = url;
+  const posterUrl = posterUrlForSelection(url);
+  state.selectedTargetUrl = posterUrl;
   for (const button of elements.targetList.querySelectorAll(".target")) {
     button.classList.toggle("active", button === activeButton);
   }
-  setStatus("Loading TPDb poster pages...");
-  elements.posterGrid.innerHTML = loadingMarkup("Loading poster pages");
-  const payload = await api(`/api/tpdb/posters?url=${encodeURIComponent(url)}`);
+  const loadingLabel = state.selectedItem?.type === "season" ? "Loading season poster pages" : "Loading poster pages";
+  setStatus(loadingLabel + "...");
+  elements.posterGrid.innerHTML = loadingMarkup(loadingLabel);
+  const payload = await api(`/api/tpdb/posters?url=${encodeURIComponent(posterUrl)}`);
   state.posters = payload.posters;
   elements.creatorFilter.disabled = state.posters.length === 0;
   renderPosters(payload.posters);
@@ -227,13 +280,24 @@ async function loadPosters(url, activeButton) {
   }
   const pageText = `${payload.pagesFetched || 1} TPDb page${payload.pagesFetched === 1 ? "" : "s"}`;
   const moreText = payload.hasMore ? ` Max page limit reached at ${payload.maxPages}.` : "";
-  setStatus(`${payload.posters.length} posters found across ${pageText}.${moreText}`);
+  const scopeText = state.selectedItem?.type === "season" ? "season posters" : "posters";
+  setStatus(`${payload.posters.length} ${scopeText} found across ${pageText}.${moreText}`);
+}
+
+function posterUrlForSelection(url) {
+  if (state.selectedItem?.type !== "season") {
+    return url;
+  }
+  const posterUrl = new URL(url);
+  posterUrl.searchParams.set("season", state.selectedItem.index || "0");
+  return posterUrl.toString();
 }
 
 function renderPosters(posters) {
   const creatorFilter = elements.creatorFilter.value.trim().toLowerCase();
   const visiblePosters = posters.filter((poster) => {
-    return !creatorFilter || (poster.creator || "").toLowerCase().includes(creatorFilter);
+    if (!creatorFilter) return true;
+    return `${poster.creator || ""} ${poster.title || ""}`.toLowerCase().includes(creatorFilter);
   });
 
   elements.posterGrid.innerHTML = "";
@@ -267,6 +331,16 @@ async function applyPoster(imageUrl) {
     body: JSON.stringify({ item: state.selectedItem, imageUrl }),
   });
   setStatus(`Poster saved: ${payload.path}`);
+}
+
+function selectedItemMeta(item) {
+  if (item.type === "season") {
+    return `TV season · ${item.folder || item.file || "No season folder exposed"}`;
+  }
+  if (item.type === "show") {
+    return `TV show · ${item.file || "No show folder exposed"}`;
+  }
+  return `Movie · ${item.file || "No media path exposed"}`;
 }
 
 function clearPosterPane() {

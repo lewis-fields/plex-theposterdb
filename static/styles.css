@@ -337,6 +337,23 @@ h2 {
   box-shadow: 0 0 0 1px rgb(225 184 102 / 0.22) inset;
 }
 
+.seasonRow {
+  width: calc(100% - 22px);
+  margin-left: 22px;
+  background: rgb(30 35 43 / 0.42);
+}
+
+.seasonRow .itemText strong {
+  font-size: 13px;
+}
+
+.seasonHint {
+  margin: -1px 8px 7px 30px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 750;
+}
+
 .itemText {
   min-width: 0;
   display: grid;

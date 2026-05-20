@@ -2,7 +2,7 @@
 
 A local web app for choosing posters from The Poster Database and applying them to Plex movie and TV libraries.
 
-The app connects to Plex, lists movie and show libraries, searches public TPDb pages for poster choices, downloads the selected poster into the item folder as `poster.jpg`, and asks Plex to refresh that specific item.
+The app connects to Plex, lists movie and show libraries, searches public TPDb pages for poster choices, downloads the selected poster into the item folder as `poster.jpg`, and asks Plex to refresh that specific item. TV shows can also expand into seasons so each season can receive its own poster.
 
 ## Important TPDb note
 
@@ -56,6 +56,9 @@ For typical Plex local assets:
 
 - Movies: saves beside the movie file.
 - Shows: saves in the show folder exposed by Plex.
+- Seasons: saves in the season folder, based on the first episode file Plex exposes.
+
+If Plex does not expose an episode path for a season, the app falls back to `Season 01`, `Season 02`, and so on under the show folder.
 
 ## Plex token
 

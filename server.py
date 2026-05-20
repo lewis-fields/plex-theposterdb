@@ -98,12 +98,15 @@ def map_plex_path(path: str) -> str:
 
 
 def media_folder(item: dict[str, Any]) -> Path:
+    folder_path = item.get("folder")
+    if folder_path:
+        return Path(map_plex_path(folder_path))
     file_path = item.get("file")
     if not file_path:
         raise AppError("Plex did not expose a media file path for this item.")
     local_file = Path(map_plex_path(file_path))
     if item.get("type") == "show":
-        return local_file.parent
+        return local_file
     return local_file.parent
 
 
@@ -160,6 +163,65 @@ def library_items(section_key: str) -> list[dict[str, Any]]:
     return items
 
 
+def season_folder_name(index: str) -> str:
+    try:
+        return f"Season {int(index):02d}"
+    except ValueError:
+        return "Season 00"
+
+
+def season_items(show_key: str) -> list[dict[str, Any]]:
+    metadata = plex_xml(f"/library/metadata/{urllib.parse.quote(show_key)}")
+    show = metadata.find("Directory")
+    if show is None:
+        raise AppError("Plex show metadata was not found.", 404)
+
+    show_title = show.attrib.get("title", "")
+    show_folder = first_location_path(show)
+    root = plex_xml(f"/library/metadata/{urllib.parse.quote(show_key)}/children")
+    seasons = []
+    for directory in root.findall("Directory"):
+        if directory.attrib.get("type") != "season":
+            continue
+        season_key = directory.attrib.get("ratingKey", "") or directory.attrib.get("key", "").strip("/").split("/")[-1]
+        if not season_key:
+            continue
+        index = directory.attrib.get("index", "")
+        file_path = ""
+        try:
+            episodes = plex_xml(f"/library/metadata/{urllib.parse.quote(season_key)}/children")
+            for episode in episodes.findall("Video"):
+                file_path = first_media_file(episode)
+                if file_path:
+                    break
+        except AppError:
+            file_path = ""
+
+        folder = ""
+        if file_path:
+            folder = str(Path(file_path).parent)
+        elif show_folder:
+            folder = str(Path(show_folder) / season_folder_name(index))
+
+        seasons.append(
+            {
+                "ratingKey": season_key,
+                "parentRatingKey": show_key,
+                "parentTitle": show_title,
+                "title": directory.attrib.get("title", season_folder_name(index)),
+                "year": "",
+                "index": index,
+                "type": "season",
+                "thumb": directory.attrib.get("thumb", ""),
+                "guid": directory.attrib.get("guid", ""),
+                "file": file_path,
+                "folder": folder,
+                "searchTitle": show_title,
+            }
+        )
+    return seasons
+
+
 def refresh_item(rating_key: str) -> None:
     request_bytes(plex_url(f"/library/metadata/{urllib.parse.quote(rating_key)}/refresh"))
 
@@ -184,7 +246,7 @@ def clean_text(value: str) -> str:
 
 
 def tpdb_search_targets(term: str, media_type: str) -> list[dict[str, str]]:
-    section = "shows" if media_type == "show" else "movies"
+    section = "shows" if media_type in {"show", "season"} else "movies"
     query = urllib.parse.urlencode({"term": term, "section": section})
     html = tpdb_get(f"/search?{query}")
     candidates = []
@@ -382,6 +444,11 @@ class Handler(BaseHTTPRequestHandler):
             if not section_key:
                 raise AppError("Missing section.")
             self.send_json({"items": library_items(section_key)})
+        elif parsed.path == "/api/seasons":
+            show_key = params.get("show", [""])[0]
+            if not show_key:
+                raise AppError("Missing show.")
+            self.send_json({"seasons": season_items(show_key)})
         elif parsed.path == "/api/tpdb/search":
             term = params.get("term", [""])[0]
             media_type = params.get("type", ["movie"])[0]
