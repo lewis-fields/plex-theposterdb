@@ -24,6 +24,7 @@ CONFIG_PATH = ROOT / "config.json"
 TPDB_BASE = "https://theposterdb.com"
 TPDB_IMAGE_BASE = "https://images.theposterdb.com"
 TPDB_MAX_POSTER_PAGES = 12
+TPDB_MAX_SEARCH_PAGES = 6
 USER_AGENT = "TPDb Plex Poster Picker/0.1 (+local app)"
 
 
@@ -61,9 +62,15 @@ class Config:
             json.dump(payload, config_file, indent=2)
 
 
-def request_bytes(url: str, headers: dict[str, str] | None = None, timeout: int = 30) -> bytes:
+def request_bytes(
+    url: str,
+    headers: dict[str, str] | None = None,
+    timeout: int = 30,
+    method: str = "GET",
+    data: bytes | None = None,
+) -> bytes:
     request_headers = {"User-Agent": USER_AGENT, **(headers or {})}
-    request = urllib.request.Request(url, headers=request_headers)
+    request = urllib.request.Request(url, headers=request_headers, method=method, data=data)
     context = ssl.create_default_context()
     try:
         with urllib.request.urlopen(request, timeout=timeout, context=context) as response:
@@ -245,27 +252,45 @@ def clean_text(value: str) -> str:
     return re.sub(r"\s+", " ", value).strip()
 
 
-def tpdb_search_targets(term: str, media_type: str) -> list[dict[str, str]]:
-    section = "shows" if media_type in {"show", "season"} else "movies"
-    query = urllib.parse.urlencode({"term": term, "section": section})
-    html = tpdb_get(f"/search?{query}")
+def parse_search_targets(html: str, media_type: str) -> list[dict[str, str]]:
     candidates = []
-    category = "posters" if media_type in {"movie", "show"} else "posters"
+    category = "posters" if media_type in {"movie", "show", "season"} else "posters"
     pattern = re.compile(r'<a[^>]+href="((?:https://theposterdb\.com)?/posters/\d+)"[^>]*>(.*?)</a>', re.I | re.S)
     for match in pattern.finditer(html):
         title = clean_text(match.group(2))
         if not title:
             continue
         candidates.append({"title": title, "url": absolute_url(unescape(match.group(1))), "category": category})
-    seen = set()
-    unique = []
-    for candidate in candidates:
-        key = candidate["url"]
-        if key in seen:
-            continue
-        seen.add(key)
-        unique.append(candidate)
-    return unique[:12]
+    return candidates
+
+
+def tpdb_search_targets(term: str, media_type: str, max_pages: int = TPDB_MAX_SEARCH_PAGES) -> dict[str, Any]:
+    section = "shows" if media_type in {"show", "season"} else "movies"
+    query = urllib.parse.urlencode({"term": term, "section": section})
+    page_url = f"/search?{query}"
+    pages_fetched = 0
+    has_more = False
+    seen: set[str] = set()
+    targets: list[dict[str, str]] = []
+
+    while page_url and pages_fetched < max_pages:
+        html = tpdb_get(page_url)
+        pages_fetched += 1
+        for candidate in parse_search_targets(html, media_type):
+            key = candidate["url"]
+            if key in seen:
+                continue
+            seen.add(key)
+            targets.append(candidate)
+        page_url = next_tpdb_page(html)
+        has_more = bool(page_url)
+
+    return {
+        "targets": targets,
+        "pagesFetched": pages_fetched,
+        "hasMore": has_more,
+        "maxPages": max_pages,
+    }
 
 
 def poster_asset_url(asset_id: str) -> str:
@@ -336,14 +361,16 @@ def next_tpdb_page(html: str) -> str:
     return absolute_url(unescape(match.group(1))) if match else ""
 
 
-def tpdb_posters(target_url: str, max_pages: int = TPDB_MAX_POSTER_PAGES) -> dict[str, Any]:
+def tpdb_posters(target_url: str, max_pages: int | None = TPDB_MAX_POSTER_PAGES) -> dict[str, Any]:
     posters: list[dict[str, str]] = []
     seen_ids: set[str] = set()
+    seen_pages: set[str] = set()
     page_url = target_url
     pages_fetched = 0
     has_more = False
 
-    while page_url and pages_fetched < max_pages:
+    while page_url and page_url not in seen_pages and (max_pages is None or pages_fetched < max_pages):
+        seen_pages.add(page_url)
         html = tpdb_get(page_url)
         pages_fetched += 1
         for poster in parse_posters(html):
@@ -363,6 +390,12 @@ def tpdb_posters(target_url: str, max_pages: int = TPDB_MAX_POSTER_PAGES) -> dic
     }
 
 
+def fetch_image(image_url: str) -> tuple[bytes, str]:
+    request = urllib.request.Request(image_url, headers={"User-Agent": USER_AGENT})
+    with urllib.request.urlopen(request, timeout=45) as response:
+        return response.read(), response.headers.get("Content-Type", "image/jpeg")
+
+
 def choose_extension(content_type: str, image_url: str) -> str:
     if "png" in content_type:
         return ".png"
@@ -374,18 +407,40 @@ def choose_extension(content_type: str, image_url: str) -> str:
     return ".jpg"
 
 
-def download_poster(image_url: str, item: dict[str, Any]) -> dict[str, str]:
-    request = urllib.request.Request(image_url, headers={"User-Agent": USER_AGENT})
-    with urllib.request.urlopen(request, timeout=45) as response:
-        content = response.read()
-        content_type = response.headers.get("Content-Type", "")
-
+def save_local_poster(image_url: str, item: dict[str, Any], content: bytes, content_type: str) -> dict[str, str]:
     extension = choose_extension(content_type, image_url)
     folder = media_folder(item)
     folder.mkdir(parents=True, exist_ok=True)
     destination = folder / f"poster{extension}"
     destination.write_bytes(content)
-    return {"path": str(destination), "bytes": str(len(content))}
+    return {"mode": "local", "path": str(destination), "bytes": str(len(content))}
+
+
+def upload_plex_poster(item: dict[str, Any], content: bytes, content_type: str) -> dict[str, str]:
+    rating_key = str(item.get("ratingKey") or "")
+    if not rating_key:
+        raise AppError("Plex did not expose a rating key for this item.")
+    request_bytes(
+        plex_url(f"/library/metadata/{urllib.parse.quote(rating_key)}/posters"),
+        headers={"Content-Type": content_type or "image/jpeg"},
+        method="POST",
+        data=content,
+        timeout=45,
+    )
+    return {"mode": "plex", "ratingKey": rating_key, "bytes": str(len(content))}
+
+
+def apply_poster(image_url: str, item: dict[str, Any], mode: str) -> dict[str, str]:
+    content, content_type = fetch_image(image_url)
+    if mode == "plex":
+        return upload_plex_poster(item, content, content_type)
+    if mode == "local":
+        result = save_local_poster(image_url, item, content, content_type)
+        rating_key = str(item.get("ratingKey") or "")
+        if rating_key:
+            refresh_item(rating_key)
+        return result
+    raise AppError("Unknown poster apply mode.")
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -419,12 +474,10 @@ class Handler(BaseHTTPRequestHandler):
                 payload = self.read_json()
                 item = payload.get("item") or {}
                 image_url = str(payload.get("imageUrl") or "")
+                mode = str(payload.get("mode") or "local")
                 if not image_url:
                     raise AppError("No poster image URL provided.")
-                result = download_poster(image_url, item)
-                rating_key = str(item.get("ratingKey") or "")
-                if rating_key:
-                    refresh_item(rating_key)
+                result = apply_poster(image_url, item, mode)
                 self.send_json({"ok": True, **result})
                 return
             raise AppError("Unknown endpoint.", 404)
@@ -454,13 +507,17 @@ class Handler(BaseHTTPRequestHandler):
             media_type = params.get("type", ["movie"])[0]
             if not term:
                 raise AppError("Missing search term.")
-            self.send_json({"targets": tpdb_search_targets(term, media_type)})
+            max_pages = int(params.get("maxPages", [str(TPDB_MAX_SEARCH_PAGES)])[0])
+            max_pages = max(1, min(max_pages, TPDB_MAX_SEARCH_PAGES))
+            self.send_json(tpdb_search_targets(term, media_type, max_pages))
         elif parsed.path == "/api/tpdb/posters":
             url = params.get("url", [""])[0]
             if not url:
                 raise AppError("Missing TPDb target URL.")
-            max_pages = int(params.get("maxPages", [str(TPDB_MAX_POSTER_PAGES)])[0])
-            max_pages = max(1, min(max_pages, TPDB_MAX_POSTER_PAGES))
+            max_pages = None
+            if params.get("allPages", [""])[0] != "1":
+                max_pages = int(params.get("maxPages", [str(TPDB_MAX_POSTER_PAGES)])[0])
+                max_pages = max(1, min(max_pages, TPDB_MAX_POSTER_PAGES))
             self.send_json(tpdb_posters(url, max_pages))
         elif parsed.path == "/api/proxy-image":
             url = params.get("url", [""])[0]

@@ -85,8 +85,15 @@
               <input id="tpdbSearchTerm" placeholder="Search title" disabled />
             </label>
             <label>
-              Poster filter
-              <input id="creatorFilter" placeholder="Filter by creator, season, or title" disabled />
+              Apply target
+              <select id="applyMode">
+                <option value="plex">Set directly in Plex</option>
+                <option value="local">Save local poster file</option>
+              </select>
+            </label>
+            <label>
+              Creator filter
+              <input id="creatorFilter" placeholder="Search all pages by creator" disabled />
             </label>
           </div>
           <div id="targetList" class="targets"></div>

@@ -407,7 +407,7 @@ h2 {
 
 .posterControls {
   display: grid;
-  grid-template-columns: minmax(220px, 1fr) minmax(180px, 300px);
+  grid-template-columns: minmax(220px, 1fr) minmax(190px, 240px) minmax(180px, 300px);
   gap: 12px;
   padding: 14px 18px;
   border-bottom: 1px solid var(--line);
@@ -439,6 +439,12 @@ h2 {
 .target.active {
   border-color: rgb(123 199 160 / 0.72);
   background: color-mix(in srgb, var(--green) 22%, var(--surface-2));
+}
+
+.target.more {
+  border-color: rgb(131 174 232 / 0.55);
+  background: rgb(131 174 232 / 0.12);
+  color: var(--blue);
 }
 
 .grid {
@@ -505,6 +511,14 @@ h2 {
   border-color: color-mix(in srgb, var(--green) 70%, black);
   background: linear-gradient(180deg, #91d7b2, var(--green));
   color: #07150b;
+}
+
+.loadMore {
+  grid-column: 1 / -1;
+  min-height: 52px;
+  border-color: var(--line-2);
+  background: var(--surface-2);
+  color: var(--text);
 }
 
 .empty {

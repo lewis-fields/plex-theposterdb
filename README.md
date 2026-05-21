@@ -2,7 +2,7 @@
 
 A local web app for choosing posters from The Poster Database and applying them to Plex movie and TV libraries.
 
-The app connects to Plex, lists movie and show libraries, searches public TPDb pages for poster choices, downloads the selected poster into the item folder as `poster.jpg`, and asks Plex to refresh that specific item. TV shows can also expand into seasons so each season can receive its own poster.
+The app connects to Plex, lists movie and show libraries, searches public TPDb pages for poster choices, and can either set a selected poster directly in Plex or save it into the item folder as `poster.jpg`. TV shows can also expand into seasons so each season can receive its own poster.
 
 ## Important TPDb note
 
@@ -42,9 +42,16 @@ Example path mapping:
 
 Use mappings when Plex reports media paths that differ from the paths visible to this app. If Plex runs in Docker, this is commonly required.
 
-## Poster filenames
+## Apply targets
 
-The app writes selected posters as:
+The poster browser includes an apply target selector:
+
+- `Set directly in Plex` uploads the selected image to Plex for that movie, show, or season. This does not require the app to reach your media folders.
+- `Save local poster file` writes a local asset beside the media and refreshes that Plex item. This requires a local or mapped path the app can write to.
+
+## Local poster filenames
+
+In local poster mode, the app writes selected posters as:
 
 ```text
 poster.jpg

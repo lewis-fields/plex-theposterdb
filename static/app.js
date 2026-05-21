@@ -1,3 +1,6 @@
+const maxSearchPageLimit = 6;
+const maxPosterPageLimit = 12;
+
 const state = {
   libraries: [],
   items: [],
@@ -6,8 +9,15 @@ const state = {
   posters: [],
   selectedItem: null,
   selectedTargetUrl: "",
+  selectedTargetBaseUrl: "",
+  searchPageLimit: 1,
+  posterPageLimit: 1,
+  posterHasMore: false,
+  allPosterPagesLoaded: false,
+  applyMode: localStorage.getItem("applyMode") || "plex",
   busy: false,
 };
+let creatorFilterTimer;
 
 const elements = {
   configForm: document.querySelector("#configForm"),
@@ -27,6 +37,7 @@ const elements = {
   selectedMeta: document.querySelector("#selectedMeta"),
   searchTpdb: document.querySelector("#searchTpdb"),
   tpdbSearchTerm: document.querySelector("#tpdbSearchTerm"),
+  applyMode: document.querySelector("#applyMode"),
   creatorFilter: document.querySelector("#creatorFilter"),
   targetList: document.querySelector("#targetList"),
   posterGrid: document.querySelector("#posterGrid"),
@@ -47,6 +58,15 @@ function setBusy(isBusy) {
   elements.searchTpdb.disabled = isBusy || !state.selectedItem;
   elements.tpdbSearchTerm.disabled = !state.selectedItem;
   elements.creatorFilter.disabled = state.posters.length === 0;
+}
+
+function setApplyMode(mode) {
+  state.applyMode = mode === "local" ? "local" : "plex";
+  elements.applyMode.value = state.applyMode;
+  localStorage.setItem("applyMode", state.applyMode);
+  if (state.posters.length) {
+    renderPosters(state.posters);
+  }
 }
 
 async function api(path, options = {}) {
@@ -211,6 +231,11 @@ function renderSeasonRows(show) {
 function selectItem(item) {
   state.selectedItem = item;
   state.selectedTargetUrl = "";
+  state.selectedTargetBaseUrl = "";
+  state.searchPageLimit = 1;
+  state.posterPageLimit = 1;
+  state.posterHasMore = false;
+  state.allPosterPagesLoaded = false;
   state.posters = [];
   const displayTitle = item.type === "season" ? `${item.parentTitle} · ${item.title}` : `${item.title}${item.year ? ` (${item.year})` : ""}`;
   elements.selectedTitle.textContent = displayTitle;
@@ -237,13 +262,37 @@ async function searchTpdb() {
   elements.posterGrid.classList.add("empty");
   const term = elements.tpdbSearchTerm.value.trim() || state.selectedItem.title;
   const payload = await api(
-    `/api/tpdb/search?term=${encodeURIComponent(term)}&type=${encodeURIComponent(state.selectedItem.type)}`,
+    `/api/tpdb/search?term=${encodeURIComponent(term)}&type=${encodeURIComponent(state.selectedItem.type)}&maxPages=${state.searchPageLimit}`,
   );
-  renderTargets(payload.targets);
-  setStatus(payload.targets.length ? "Choose a TPDb result." : "No TPDb search results found.");
+  renderTargets(payload.targets, payload.hasMore && state.searchPageLimit < maxSearchPageLimit);
+  if (!payload.targets.length) {
+    setStatus("No TPDb search results found.");
+    return;
+  }
+  const searchPageText = `${payload.pagesFetched || 1} search page${payload.pagesFetched === 1 ? "" : "s"}`;
+  const moreText = payload.hasMore ? " Load more title results to search deeper." : "";
+  setStatus(`${payload.targets.length} TPDb title results found across ${searchPageText}.${moreText}`);
+  if (payload.targets.length === 1) {
+    await loadPosters(payload.targets[0].url, elements.targetList.querySelector(".target"), 1);
+    return;
+  }
+  elements.posterGrid.innerHTML = '<div class="emptyState">Choose the matching TPDb title result to load posters.</div>';
 }
 
-function renderTargets(targets) {
+async function loadMoreTargets() {
+  if (!state.selectedItem) return;
+  state.searchPageLimit = Math.min(state.searchPageLimit + 1, maxSearchPageLimit);
+  setStatus("Loading more TPDb title results...");
+  const term = elements.tpdbSearchTerm.value.trim() || state.selectedItem.title;
+  const payload = await api(
+    `/api/tpdb/search?term=${encodeURIComponent(term)}&type=${encodeURIComponent(state.selectedItem.type)}&maxPages=${state.searchPageLimit}`,
+  );
+  renderTargets(payload.targets, payload.hasMore && state.searchPageLimit < maxSearchPageLimit);
+  const moreText = payload.hasMore ? " More title results are still available." : "";
+  setStatus(`${payload.targets.length} TPDb title results loaded from ${payload.pagesFetched} search pages.${moreText}`);
+}
+
+function renderTargets(targets, hasMore = false) {
   elements.targetList.innerHTML = "";
   if (!targets.length) {
     elements.posterGrid.innerHTML = '<div class="emptyState">No TPDb result matched this title.</div>';
@@ -255,33 +304,67 @@ function renderTargets(targets) {
     button.className = "target";
     button.textContent = target.title;
     button.title = target.title;
-    button.addEventListener("click", () => loadPosters(target.url, button));
+    button.classList.toggle("active", state.selectedTargetBaseUrl === target.url);
+    button.addEventListener("click", () => run(() => loadPosters(target.url, button, 1)));
     elements.targetList.append(button);
   }
-  elements.targetList.querySelector(".target")?.click();
+  if (hasMore) {
+    const moreButton = document.createElement("button");
+    moreButton.type = "button";
+    moreButton.className = "target more";
+    moreButton.textContent = "More title results";
+    moreButton.addEventListener("click", () => run(loadMoreTargets));
+    elements.targetList.append(moreButton);
+  }
 }
 
-async function loadPosters(url, activeButton) {
+async function loadPosters(url, activeButton, pageLimit = state.posterPageLimit) {
   const posterUrl = posterUrlForSelection(url);
+  state.selectedTargetBaseUrl = url;
   state.selectedTargetUrl = posterUrl;
+  state.posterPageLimit = Math.min(pageLimit, maxPosterPageLimit);
   for (const button of elements.targetList.querySelectorAll(".target")) {
     button.classList.toggle("active", button === activeButton);
   }
   const loadingLabel = state.selectedItem?.type === "season" ? "Loading season poster pages" : "Loading poster pages";
   setStatus(loadingLabel + "...");
   elements.posterGrid.innerHTML = loadingMarkup(loadingLabel);
-  const payload = await api(`/api/tpdb/posters?url=${encodeURIComponent(posterUrl)}`);
+  const payload = await api(`/api/tpdb/posters?url=${encodeURIComponent(posterUrl)}&maxPages=${state.posterPageLimit}`);
   state.posters = payload.posters;
+  state.posterHasMore = payload.hasMore;
+  state.allPosterPagesLoaded = !payload.hasMore;
   elements.creatorFilter.disabled = state.posters.length === 0;
-  renderPosters(payload.posters);
+  renderPosters(payload.posters, payload.hasMore && state.posterPageLimit < maxPosterPageLimit);
   if (!payload.posters.length) {
     setStatus("No posters found on that TPDb page.");
     return;
   }
   const pageText = `${payload.pagesFetched || 1} TPDb page${payload.pagesFetched === 1 ? "" : "s"}`;
-  const moreText = payload.hasMore ? ` Max page limit reached at ${payload.maxPages}.` : "";
+  const moreText = payload.hasMore ? " Load more poster pages to continue." : "";
   const scopeText = state.selectedItem?.type === "season" ? "season posters" : "posters";
   setStatus(`${payload.posters.length} ${scopeText} found across ${pageText}.${moreText}`);
+}
+
+async function loadAllPostersForCreator() {
+  if (!state.selectedTargetUrl || state.allPosterPagesLoaded) {
+    renderPosters(state.posters, state.posterHasMore && state.posterPageLimit < maxPosterPageLimit);
+    return;
+  }
+  const creator = elements.creatorFilter.value.trim();
+  if (!creator) {
+    renderPosters(state.posters, state.posterHasMore && state.posterPageLimit < maxPosterPageLimit);
+    return;
+  }
+  setStatus(`Searching all TPDb poster pages for ${creator}...`);
+  elements.posterGrid.innerHTML = loadingMarkup("Searching all poster pages");
+  const payload = await api(`/api/tpdb/posters?url=${encodeURIComponent(state.selectedTargetUrl)}&allPages=1`);
+  state.posters = payload.posters;
+  state.posterHasMore = payload.hasMore;
+  state.allPosterPagesLoaded = !payload.hasMore;
+  state.posterPageLimit = Math.max(state.posterPageLimit, payload.pagesFetched || state.posterPageLimit);
+  renderPosters(state.posters, false);
+  const matches = visiblePostersForCreator(state.posters).length;
+  setStatus(`${matches} posters by matching creators found across ${payload.pagesFetched} TPDb poster pages.`);
 }
 
 function posterUrlForSelection(url) {
@@ -293,12 +376,8 @@ function posterUrlForSelection(url) {
   return posterUrl.toString();
 }
 
-function renderPosters(posters) {
-  const creatorFilter = elements.creatorFilter.value.trim().toLowerCase();
-  const visiblePosters = posters.filter((poster) => {
-    if (!creatorFilter) return true;
-    return `${poster.creator || ""} ${poster.title || ""}`.toLowerCase().includes(creatorFilter);
-  });
+function renderPosters(posters, hasMore = false) {
+  const visiblePosters = visiblePostersForCreator(posters);
 
   elements.posterGrid.innerHTML = "";
   elements.posterGrid.classList.toggle("empty", visiblePosters.length === 0);
@@ -315,22 +394,40 @@ function renderPosters(posters) {
       <div class="posterInfo">
         <strong title="${escapeHtml(poster.creator || poster.title)}">${escapeHtml(poster.creator || "Unknown creator")}</strong>
         <span title="${escapeHtml(poster.title)}">${escapeHtml(poster.title)}</span>
-        <button class="apply" type="button">Apply poster</button>
+        <button class="apply" type="button">${state.applyMode === "plex" ? "Set in Plex" : "Save poster file"}</button>
       </div>
     `;
     card.querySelector(".apply").addEventListener("click", () => applyPoster(poster.imageUrl));
     elements.posterGrid.append(card);
   }
+  if (hasMore && state.selectedTargetBaseUrl) {
+    const moreButton = document.createElement("button");
+    moreButton.type = "button";
+    moreButton.className = "loadMore";
+    moreButton.textContent = "Load more poster pages";
+    moreButton.addEventListener("click", () => run(() => loadPosters(state.selectedTargetBaseUrl, activeTargetButton(), state.posterPageLimit + 1)));
+    elements.posterGrid.append(moreButton);
+  }
+}
+
+function visiblePostersForCreator(posters) {
+  const creatorFilter = elements.creatorFilter.value.trim().toLowerCase();
+  if (!creatorFilter) return posters;
+  return posters.filter((poster) => (poster.creator || "").toLowerCase().includes(creatorFilter));
+}
+
+function activeTargetButton() {
+  return elements.targetList.querySelector(".target.active");
 }
 
 async function applyPoster(imageUrl) {
   if (!state.selectedItem) return;
-  setStatus("Downloading poster and refreshing Plex...");
+  setStatus(state.applyMode === "plex" ? "Uploading poster to Plex..." : "Saving poster file and refreshing Plex...");
   const payload = await api("/api/apply", {
     method: "POST",
-    body: JSON.stringify({ item: state.selectedItem, imageUrl }),
+    body: JSON.stringify({ item: state.selectedItem, imageUrl, mode: state.applyMode }),
   });
-  setStatus(`Poster saved: ${payload.path}`);
+  setStatus(payload.mode === "plex" ? "Poster set directly in Plex." : `Poster saved: ${payload.path}`);
 }
 
 function selectedItemMeta(item) {
@@ -346,6 +443,11 @@ function selectedItemMeta(item) {
 function clearPosterPane() {
   state.selectedItem = null;
   state.selectedTargetUrl = "";
+  state.selectedTargetBaseUrl = "";
+  state.searchPageLimit = 1;
+  state.posterPageLimit = 1;
+  state.posterHasMore = false;
+  state.allPosterPagesLoaded = false;
   state.posters = [];
   elements.selectedTitle.textContent = "Select an item";
   elements.selectedMeta.textContent = "Choose a movie or show to begin.";
@@ -398,7 +500,16 @@ elements.tpdbSearchTerm.addEventListener("keydown", (event) => {
     run(searchTpdb);
   }
 });
-elements.creatorFilter.addEventListener("input", () => renderPosters(state.posters));
+elements.creatorFilter.addEventListener("input", () => {
+  window.clearTimeout(creatorFilterTimer);
+  renderPosters(state.posters, state.posterHasMore && state.posterPageLimit < maxPosterPageLimit);
+  if (!elements.creatorFilter.value.trim() || !state.posterHasMore || state.allPosterPagesLoaded) {
+    return;
+  }
+  creatorFilterTimer = window.setTimeout(() => run(loadAllPostersForCreator), 450);
+});
+elements.applyMode.addEventListener("change", () => setApplyMode(elements.applyMode.value));
 elements.searchTpdb.addEventListener("click", () => run(searchTpdb));
 
+setApplyMode(state.applyMode);
 run(loadConfig);
