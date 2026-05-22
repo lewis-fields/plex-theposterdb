@@ -24,6 +24,7 @@ const elements = {
   plexUrl: document.querySelector("#plexUrl"),
   plexToken: document.querySelector("#plexToken"),
   pathMappings: document.querySelector("#pathMappings"),
+  removeOverlayLabelOnApply: document.querySelector("#removeOverlayLabelOnApply"),
   connectionState: document.querySelector("#connectionState"),
   loadLibraries: document.querySelector("#loadLibraries"),
   librarySelect: document.querySelector("#librarySelect"),
@@ -102,6 +103,7 @@ async function loadConfig() {
   elements.plexUrl.value = config.plex_url || "";
   elements.plexToken.value = config.plex_token || "";
   elements.pathMappings.value = formatMappings(config.path_mappings || []);
+  elements.removeOverlayLabelOnApply.checked = Boolean(config.remove_overlay_label_on_apply);
   elements.connectionState.textContent = config.plex_url && config.plex_token ? "Configured" : "Not configured";
   elements.connectionState.classList.toggle("ok", Boolean(config.plex_url && config.plex_token));
 }
@@ -114,6 +116,7 @@ async function saveConfig(event) {
       plex_url: elements.plexUrl.value.trim(),
       plex_token: elements.plexToken.value.trim(),
       path_mappings: parseMappings(elements.pathMappings.value),
+      remove_overlay_label_on_apply: elements.removeOverlayLabelOnApply.checked,
     }),
   });
   elements.connectionState.textContent = "Configured";
@@ -157,7 +160,9 @@ async function loadSeasons(show) {
   state.loadingSeasons.add(show.ratingKey);
   renderItems();
   try {
-    const payload = await api(`/api/seasons?show=${encodeURIComponent(show.ratingKey)}`);
+    const payload = await api(
+      `/api/seasons?show=${encodeURIComponent(show.ratingKey)}&section=${encodeURIComponent(show.sectionKey || "")}`,
+    );
     state.seasonsByShow[show.ratingKey] = payload.seasons;
   } finally {
     state.loadingSeasons.delete(show.ratingKey);
@@ -427,7 +432,9 @@ async function applyPoster(imageUrl) {
     method: "POST",
     body: JSON.stringify({ item: state.selectedItem, imageUrl, mode: state.applyMode }),
   });
-  setStatus(payload.mode === "plex" ? "Poster set directly in Plex." : `Poster saved: ${payload.path}`);
+  const posterStatus = payload.mode === "plex" ? "Poster set directly in Plex." : `Poster saved: ${payload.path}`;
+  const overlayStatus = payload.overlayLabelRemoved ? " Kometa Overlay label removed." : "";
+  setStatus(posterStatus + overlayStatus);
 }
 
 function selectedItemMeta(item) {

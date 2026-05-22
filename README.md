@@ -33,6 +33,7 @@ In the app sidebar:
 - `Plex URL`: usually `http://127.0.0.1:32400` if this runs on the Plex server.
 - `Plex token`: your Plex authentication token.
 - `Path mapping`: optional, one mapping per line, using `=>`.
+- `Remove Kometa Overlay label after applying posters`: optional. When enabled, poster applies also remove Plex's `Overlay` label from the selected movie, show, or season.
 
 Example path mapping:
 

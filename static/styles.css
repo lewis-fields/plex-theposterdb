@@ -113,6 +113,27 @@ label {
   letter-spacing: 0;
 }
 
+.checkboxRow {
+  grid-template-columns: 18px minmax(0, 1fr);
+  align-items: start;
+  gap: 9px;
+  line-height: 1.35;
+}
+
+.checkboxRow input {
+  width: 18px;
+  height: 18px;
+  margin: 0;
+  padding: 0;
+  accent-color: var(--gold);
+}
+
+.checkboxRow span {
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 700;
+}
+
 h1,
 h2,
 p {

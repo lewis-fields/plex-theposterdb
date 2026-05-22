@@ -26,6 +26,7 @@ TPDB_IMAGE_BASE = "https://images.theposterdb.com"
 TPDB_MAX_POSTER_PAGES = 12
 TPDB_MAX_SEARCH_PAGES = 6
 USER_AGENT = "TPDb Plex Poster Picker/0.1 (+local app)"
+PLEX_EDIT_TYPES = {"movie": "1", "show": "2", "season": "3"}
 
 
 class AppError(Exception):
@@ -39,6 +40,7 @@ class Config:
     plex_url: str = ""
     plex_token: str = ""
     path_mappings: list[dict[str, str]] | None = None
+    remove_overlay_label_on_apply: bool = False
 
     @classmethod
     def load(cls) -> "Config":
@@ -50,6 +52,7 @@ class Config:
             plex_url=str(data.get("plex_url", "")).rstrip("/"),
             plex_token=str(data.get("plex_token", "")),
             path_mappings=list(data.get("path_mappings", [])),
+            remove_overlay_label_on_apply=bool(data.get("remove_overlay_label_on_apply", False)),
         )
 
     def save(self) -> None:
@@ -57,6 +60,7 @@ class Config:
             "plex_url": self.plex_url.rstrip("/"),
             "plex_token": self.plex_token,
             "path_mappings": self.path_mappings or [],
+            "remove_overlay_label_on_apply": self.remove_overlay_label_on_apply,
         }
         with CONFIG_PATH.open("w", encoding="utf-8") as config_file:
             json.dump(payload, config_file, indent=2)
@@ -165,6 +169,7 @@ def library_items(section_key: str) -> list[dict[str, Any]]:
                 "thumb": video.attrib.get("thumb", ""),
                 "guid": video.attrib.get("guid", ""),
                 "file": first_location_path(video) if item_type == "show" else first_media_file(video),
+                "sectionKey": section_key,
             }
         )
     return items
@@ -177,7 +182,7 @@ def season_folder_name(index: str) -> str:
         return "Season 00"
 
 
-def season_items(show_key: str) -> list[dict[str, Any]]:
+def season_items(show_key: str, section_key: str = "") -> list[dict[str, Any]]:
     metadata = plex_xml(f"/library/metadata/{urllib.parse.quote(show_key)}")
     show = metadata.find("Directory")
     if show is None:
@@ -185,6 +190,7 @@ def season_items(show_key: str) -> list[dict[str, Any]]:
 
     show_title = show.attrib.get("title", "")
     show_folder = first_location_path(show)
+    show_section_key = section_key or show.attrib.get("librarySectionID", "")
     root = plex_xml(f"/library/metadata/{urllib.parse.quote(show_key)}/children")
     seasons = []
     for directory in root.findall("Directory"):
@@ -224,6 +230,7 @@ def season_items(show_key: str) -> list[dict[str, Any]]:
                 "file": file_path,
                 "folder": folder,
                 "searchTitle": show_title,
+                "sectionKey": show_section_key,
             }
         )
     return seasons
@@ -231,6 +238,28 @@ def season_items(show_key: str) -> list[dict[str, Any]]:
 
 def refresh_item(rating_key: str) -> None:
     request_bytes(plex_url(f"/library/metadata/{urllib.parse.quote(rating_key)}/refresh"))
+
+
+def remove_overlay_label(item: dict[str, Any]) -> None:
+    rating_key = str(item.get("ratingKey") or "")
+    section_key = str(item.get("sectionKey") or "")
+    item_type = str(item.get("type") or "")
+    edit_type = PLEX_EDIT_TYPES.get(item_type)
+    if not rating_key or not section_key or not edit_type:
+        raise AppError("Plex item metadata is missing the library details needed to remove the Overlay label.")
+
+    request_bytes(
+        plex_url(
+            f"/library/sections/{urllib.parse.quote(section_key)}/all",
+            {
+                "type": edit_type,
+                "id": rating_key,
+                "label.locked": "1",
+                "label[].tag.tag-": "Overlay",
+            },
+        ),
+        method="PUT",
+    )
 
 
 def tpdb_get(path_or_url: str) -> str:
@@ -430,17 +459,23 @@ def upload_plex_poster(item: dict[str, Any], content: bytes, content_type: str) 
     return {"mode": "plex", "ratingKey": rating_key, "bytes": str(len(content))}
 
 
-def apply_poster(image_url: str, item: dict[str, Any], mode: str) -> dict[str, str]:
+def apply_poster(image_url: str, item: dict[str, Any], mode: str) -> dict[str, str | bool]:
     content, content_type = fetch_image(image_url)
     if mode == "plex":
-        return upload_plex_poster(item, content, content_type)
-    if mode == "local":
+        result: dict[str, str | bool] = upload_plex_poster(item, content, content_type)
+    elif mode == "local":
         result = save_local_poster(image_url, item, content, content_type)
         rating_key = str(item.get("ratingKey") or "")
         if rating_key:
             refresh_item(rating_key)
-        return result
-    raise AppError("Unknown poster apply mode.")
+    else:
+        raise AppError("Unknown poster apply mode.")
+
+    result["overlayLabelRemoved"] = False
+    if Config.load().remove_overlay_label_on_apply:
+        remove_overlay_label(item)
+        result["overlayLabelRemoved"] = True
+    return result
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -467,6 +502,7 @@ class Handler(BaseHTTPRequestHandler):
                     plex_url=str(payload.get("plex_url", "")).rstrip("/"),
                     plex_token=str(payload.get("plex_token", "")),
                     path_mappings=list(payload.get("path_mappings", [])),
+                    remove_overlay_label_on_apply=bool(payload.get("remove_overlay_label_on_apply", False)),
                 ).save()
                 self.send_json({"ok": True})
                 return
@@ -501,7 +537,8 @@ class Handler(BaseHTTPRequestHandler):
             show_key = params.get("show", [""])[0]
             if not show_key:
                 raise AppError("Missing show.")
-            self.send_json({"seasons": season_items(show_key)})
+            section_key = params.get("section", [""])[0]
+            self.send_json({"seasons": season_items(show_key, section_key)})
         elif parsed.path == "/api/tpdb/search":
             term = params.get("term", [""])[0]
             media_type = params.get("type", ["movie"])[0]
