@@ -164,6 +164,12 @@ async function loadSeasons(show) {
       `/api/seasons?show=${encodeURIComponent(show.ratingKey)}&section=${encodeURIComponent(show.sectionKey || "")}`,
     );
     state.seasonsByShow[show.ratingKey] = payload.seasons;
+    if (payload.showFolder && !show.file) {
+      show.file = payload.showFolder;
+      if (state.selectedItem?.ratingKey === show.ratingKey) {
+        elements.selectedMeta.textContent = selectedItemMeta(state.selectedItem);
+      }
+    }
   } finally {
     state.loadingSeasons.delete(show.ratingKey);
     renderItems();
@@ -393,7 +399,8 @@ function renderPosters(posters, hasMore = false) {
   for (const poster of visiblePosters) {
     const card = document.createElement("article");
     card.className = "posterCard";
-    const proxiedImage = `/api/proxy-image?url=${encodeURIComponent(poster.imageUrl)}`;
+    const previewUrl = poster.previewUrl || poster.imageUrl;
+    const proxiedImage = `/api/proxy-image?url=${encodeURIComponent(previewUrl)}`;
     card.innerHTML = `
       <img src="${proxiedImage}" alt="${escapeHtml(poster.title)}" loading="lazy" />
       <div class="posterInfo">

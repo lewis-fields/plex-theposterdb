@@ -100,10 +100,12 @@ def plex_xml(path: str, query: dict[str, str] | None = None) -> ET.Element:
 
 def map_plex_path(path: str) -> str:
     config = Config.load()
-    for mapping in config.path_mappings or []:
-        plex_prefix = mapping.get("plex", "")
+    mappings = sorted(config.path_mappings or [], key=lambda mapping: len(mapping.get("plex", "")), reverse=True)
+    for mapping in mappings:
+        plex_prefix = mapping.get("plex", "").rstrip("/\\") or mapping.get("plex", "")
         local_prefix = mapping.get("local", "")
-        if plex_prefix and local_prefix and path.startswith(plex_prefix):
+        path_matches_root = path == plex_prefix or path.startswith(f"{plex_prefix}/") or path.startswith(f"{plex_prefix}\\")
+        if plex_prefix and local_prefix and path_matches_root:
             return local_prefix.rstrip("/\\") + path[len(plex_prefix) :]
     return path
 
@@ -182,7 +184,7 @@ def season_folder_name(index: str) -> str:
         return "Season 00"
 
 
-def season_items(show_key: str, section_key: str = "") -> list[dict[str, Any]]:
+def season_items(show_key: str, section_key: str = "") -> dict[str, Any]:
     metadata = plex_xml(f"/library/metadata/{urllib.parse.quote(show_key)}")
     show = metadata.find("Directory")
     if show is None:
@@ -233,7 +235,7 @@ def season_items(show_key: str, section_key: str = "") -> list[dict[str, Any]]:
                 "sectionKey": show_section_key,
             }
         )
-    return seasons
+    return {"seasons": seasons, "showFolder": show_folder}
 
 
 def refresh_item(rating_key: str) -> None:
@@ -338,12 +340,14 @@ def parse_posters(html: str) -> list[dict[str, str]]:
         creator_match = re.search(r'<p class="uploaded-by[^"]*"[^>]*>\s*by\s*<a[^>]+>(.*?)</a>', card, re.I | re.S)
         if not image_match:
             continue
-        poster_id = poster_id_match.group(1) if poster_id_match else image_match.group(1)
+        preview_url = absolute_url(image_match.group(1))
+        poster_id = poster_id_match.group(1) if poster_id_match else preview_url
         posters.append(
             {
                 "id": poster_id,
                 "title": clean_text(title_match.group(1)) if title_match else f"TPDb poster {poster_id}",
-                "imageUrl": absolute_url(image_match.group(1)),
+                "imageUrl": poster_asset_url(poster_id) if poster_id.isdigit() else preview_url,
+                "previewUrl": preview_url,
                 "pageUrl": f"{TPDB_BASE}/poster/{poster_id}" if poster_id.isdigit() else "",
                 "creator": clean_text(creator_match.group(1)) if creator_match else "",
             }
@@ -436,11 +440,24 @@ def choose_extension(content_type: str, image_url: str) -> str:
     return ".jpg"
 
 
+def local_poster_filename(item: dict[str, Any], extension: str) -> str:
+    if item.get("type") != "season":
+        return f"poster{extension}"
+
+    index = str(item.get("index") or "")
+    if index == "0" or str(item.get("title") or "").strip().lower() == "specials":
+        return f"season-specials-poster{extension}"
+    try:
+        return f"season{int(index):02d}{extension}"
+    except ValueError:
+        return f"poster{extension}"
+
+
 def save_local_poster(image_url: str, item: dict[str, Any], content: bytes, content_type: str) -> dict[str, str]:
     extension = choose_extension(content_type, image_url)
     folder = media_folder(item)
     folder.mkdir(parents=True, exist_ok=True)
-    destination = folder / f"poster{extension}"
+    destination = folder / local_poster_filename(item, extension)
     destination.write_bytes(content)
     return {"mode": "local", "path": str(destination), "bytes": str(len(content))}
 
@@ -538,7 +555,7 @@ class Handler(BaseHTTPRequestHandler):
             if not show_key:
                 raise AppError("Missing show.")
             section_key = params.get("section", [""])[0]
-            self.send_json({"seasons": season_items(show_key, section_key)})
+            self.send_json(season_items(show_key, section_key))
         elif parsed.path == "/api/tpdb/search":
             term = params.get("term", [""])[0]
             media_type = params.get("type", ["movie"])[0]
