@@ -1,18 +1,22 @@
 :root {
   color-scheme: dark;
-  --bg: #0f1115;
-  --surface: #16191f;
-  --surface-2: #1e232b;
-  --surface-3: #262c35;
-  --text: #f4f1e8;
-  --muted: #9ba4ad;
-  --line: #303844;
-  --line-2: #455060;
-  --gold: #e1b866;
-  --green: #7bc7a0;
-  --red: #e17d75;
-  --blue: #83aee8;
-  --shadow: 0 18px 45px rgb(0 0 0 / 0.32);
+  --bg: #0a0d12;
+  --bg-soft: #0e1319;
+  --surface: #131a22;
+  --surface-2: #19232d;
+  --surface-3: #22313b;
+  --field: #0f151c;
+  --text: #f4f7fb;
+  --muted: #99a6b4;
+  --line: #26323d;
+  --line-2: #3a4d59;
+  --accent: #65e7c0;
+  --accent-strong: #35d2ab;
+  --accent-warm: #f2c563;
+  --green: #6fe3b0;
+  --red: #ff8b83;
+  --blue: #91b9ff;
+  --shadow: 0 18px 44px rgb(0 0 0 / 0.38);
 }
 
 * {
@@ -30,10 +34,7 @@ body {
   display: grid;
   grid-template-columns: 360px minmax(0, 1fr);
   overflow: hidden;
-  background:
-    radial-gradient(circle at 20% -10%, rgb(225 184 102 / 0.18), transparent 32rem),
-    radial-gradient(circle at 105% 20%, rgb(123 199 160 / 0.12), transparent 28rem),
-    var(--bg);
+  background: linear-gradient(145deg, #090c11 0%, #0b1016 42%, #0d1218 100%);
   color: var(--text);
   font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 }
@@ -47,9 +48,9 @@ textarea {
 
 button {
   min-height: 40px;
-  border: 1px solid color-mix(in srgb, var(--gold) 72%, black);
-  background: linear-gradient(180deg, #f0c96f, var(--gold));
-  color: #17130a;
+  border: 1px solid color-mix(in srgb, var(--accent) 76%, black);
+  background: linear-gradient(180deg, #7cf0cf, var(--accent-strong));
+  color: #06130f;
   border-radius: 8px;
   padding: 10px 14px;
   font-weight: 800;
@@ -75,9 +76,14 @@ button:disabled {
 }
 
 button.secondary {
-  border-color: var(--line-2);
-  background: var(--surface-2);
+  border-color: var(--line);
+  background: linear-gradient(180deg, #1b2630, #141c24);
   color: var(--text);
+}
+
+button.secondary:hover:not(:disabled) {
+  border-color: var(--line-2);
+  background: linear-gradient(180deg, #23313c, #19242d);
 }
 
 input,
@@ -85,7 +91,7 @@ select,
 textarea {
   width: 100%;
   border: 1px solid var(--line);
-  background: #10141a;
+  background: var(--field);
   color: var(--text);
   border-radius: 8px;
   padding: 11px 12px;
@@ -99,9 +105,9 @@ textarea {
 input:focus,
 select:focus,
 textarea:focus {
-  border-color: var(--gold);
-  background: #121821;
-  box-shadow: 0 0 0 3px rgb(225 184 102 / 0.12);
+  border-color: var(--accent);
+  background: #111a22;
+  box-shadow: 0 0 0 3px rgb(101 231 192 / 0.13);
 }
 
 label {
@@ -125,7 +131,7 @@ label {
   height: 18px;
   margin: 0;
   padding: 0;
-  accent-color: var(--gold);
+  accent-color: var(--accent-warm);
 }
 
 .checkboxRow span {
@@ -159,8 +165,7 @@ h2 {
   gap: 16px;
   padding: 22px;
   border-right: 1px solid var(--line);
-  background: rgb(16 18 22 / 0.86);
-  backdrop-filter: blur(22px);
+  background: linear-gradient(180deg, rgb(16 22 29 / 0.98), rgb(10 13 18 / 0.98));
 }
 
 .brand {
@@ -168,7 +173,7 @@ h2 {
   grid-template-columns: 48px 1fr;
   gap: 13px;
   align-items: center;
-  padding-bottom: 8px;
+  padding: 2px 0 10px;
 }
 
 .brandMark {
@@ -176,11 +181,12 @@ h2 {
   place-items: center;
   width: 48px;
   height: 48px;
-  border: 1px solid rgb(225 184 102 / 0.45);
-  border-radius: 12px;
-  background: linear-gradient(135deg, rgb(225 184 102 / 0.22), rgb(123 199 160 / 0.14));
-  color: var(--gold);
+  border: 1px solid rgb(101 231 192 / 0.42);
+  border-radius: 8px;
+  background: linear-gradient(145deg, rgb(101 231 192 / 0.24), rgb(242 197 99 / 0.12));
+  color: var(--accent);
   font-weight: 900;
+  box-shadow: 0 12px 30px rgb(0 0 0 / 0.25);
 }
 
 .muted,
@@ -201,10 +207,12 @@ h2 {
   display: grid;
   gap: 13px;
   padding: 15px;
-  background: rgb(30 35 43 / 0.82);
+  background: linear-gradient(180deg, rgb(22 30 39 / 0.98), rgb(15 21 28 / 0.98));
   border: 1px solid var(--line);
-  border-radius: 10px;
-  box-shadow: 0 1px 0 rgb(255 255 255 / 0.03) inset;
+  border-radius: 8px;
+  box-shadow:
+    0 1px 0 rgb(255 255 255 / 0.035) inset,
+    0 18px 32px rgb(0 0 0 / 0.16);
 }
 
 .panelHeader {
@@ -225,15 +233,15 @@ h2 {
   border-radius: 999px;
   padding: 3px 8px;
   color: var(--muted);
-  background: #12161c;
+  background: #111820;
   font-size: 11px;
   font-weight: 800;
 }
 
 .pill.ok {
-  border-color: rgb(123 199 160 / 0.5);
+  border-color: rgb(111 227 176 / 0.48);
   color: var(--green);
-  background: rgb(123 199 160 / 0.1);
+  background: rgb(111 227 176 / 0.1);
 }
 
 .workspace {
@@ -250,8 +258,7 @@ h2 {
   align-items: center;
   padding: 16px 18px;
   border-bottom: 1px solid var(--line);
-  background: rgb(15 17 21 / 0.72);
-  backdrop-filter: blur(18px);
+  background: linear-gradient(180deg, rgb(15 21 28 / 0.98), rgb(11 15 21 / 0.94));
 }
 
 .searchWrap {
@@ -263,7 +270,7 @@ h2 {
   left: 12px;
   top: 50%;
   transform: translateY(-50%);
-  color: var(--muted);
+  color: var(--accent);
   font-size: 12px;
   font-weight: 900;
   pointer-events: none;
@@ -305,7 +312,7 @@ h2 {
   border-right: 1px solid var(--line);
   display: grid;
   grid-template-rows: auto 1fr;
-  background: rgb(18 21 26 / 0.55);
+  background: rgb(11 15 20 / 0.58);
 }
 
 .posters {
@@ -313,15 +320,17 @@ h2 {
   min-height: 0;
   display: grid;
   grid-template-rows: auto auto auto 1fr;
+  background: linear-gradient(180deg, rgb(13 18 24 / 0.5), rgb(8 11 15 / 0.26));
 }
 
 .sectionHeader {
   padding: 16px 16px 10px;
   border-bottom: 1px solid var(--line);
+  background: rgb(16 23 30 / 0.72);
 }
 
 .sectionTitle {
-  color: var(--muted);
+  color: var(--accent);
   font-size: 11px;
   font-weight: 900;
   letter-spacing: 0.09em;
@@ -346,22 +355,24 @@ h2 {
   background: transparent;
   color: var(--text);
   border-radius: 8px;
+  box-shadow: none;
 }
 
 .itemRow:hover,
 .itemRow.active {
-  border-color: var(--line-2);
-  background: var(--surface);
+  border-color: var(--line);
+  background: linear-gradient(180deg, rgb(26 36 46 / 0.94), rgb(18 25 33 / 0.94));
 }
 
 .itemRow.active {
-  box-shadow: 0 0 0 1px rgb(225 184 102 / 0.22) inset;
+  border-color: rgb(101 231 192 / 0.5);
+  box-shadow: 0 0 0 1px rgb(101 231 192 / 0.13) inset;
 }
 
 .seasonRow {
   width: calc(100% - 22px);
   margin-left: 22px;
-  background: rgb(30 35 43 / 0.42);
+  background: rgb(22 30 38 / 0.54);
 }
 
 .seasonRow .itemText strong {
@@ -403,7 +414,7 @@ h2 {
   padding: 4px 7px;
   border: 1px solid var(--line);
   border-radius: 999px;
-  background: #12161c;
+  background: #111820;
 }
 
 .posterHeader {
@@ -413,6 +424,7 @@ h2 {
   gap: 18px;
   padding: 18px;
   border-bottom: 1px solid var(--line);
+  background: rgb(14 20 27 / 0.68);
 }
 
 .posterHeader > div {
@@ -432,7 +444,7 @@ h2 {
   gap: 12px;
   padding: 14px 18px;
   border-bottom: 1px solid var(--line);
-  background: rgb(22 25 31 / 0.55);
+  background: rgb(17 24 31 / 0.76);
 }
 
 .targets {
@@ -442,6 +454,7 @@ h2 {
   overflow-x: auto;
   padding: 12px 18px;
   border-bottom: 1px solid var(--line);
+  background: rgb(10 14 19 / 0.62);
 }
 
 .target {
@@ -449,7 +462,7 @@ h2 {
   max-width: 260px;
   min-height: 34px;
   border-color: var(--line);
-  background: var(--surface-2);
+  background: linear-gradient(180deg, #1b2630, #141c24);
   color: var(--text);
   text-align: left;
   white-space: nowrap;
@@ -458,13 +471,13 @@ h2 {
 }
 
 .target.active {
-  border-color: rgb(123 199 160 / 0.72);
-  background: color-mix(in srgb, var(--green) 22%, var(--surface-2));
+  border-color: rgb(101 231 192 / 0.62);
+  background: color-mix(in srgb, var(--accent) 18%, var(--surface-2));
 }
 
 .target.more {
-  border-color: rgb(131 174 232 / 0.55);
-  background: rgb(131 174 232 / 0.12);
+  border-color: rgb(145 185 255 / 0.52);
+  background: rgb(145 185 255 / 0.12);
   color: var(--blue);
 }
 
@@ -480,10 +493,10 @@ h2 {
 
 .posterCard {
   overflow: hidden;
-  background: var(--surface);
+  background: linear-gradient(180deg, #17212a, #111820);
   border: 1px solid var(--line);
-  border-radius: 10px;
-  box-shadow: 0 1px 0 rgb(255 255 255 / 0.03) inset;
+  border-radius: 8px;
+  box-shadow: 0 1px 0 rgb(255 255 255 / 0.035) inset;
   transition:
     transform 160ms ease,
     border-color 160ms ease,
@@ -492,7 +505,7 @@ h2 {
 
 .posterCard:hover {
   transform: translateY(-2px);
-  border-color: var(--line-2);
+  border-color: rgb(101 231 192 / 0.42);
   box-shadow: var(--shadow);
 }
 
@@ -501,7 +514,7 @@ h2 {
   width: 100%;
   aspect-ratio: 2 / 3;
   object-fit: cover;
-  background: #0b0d10;
+  background: #080b0f;
 }
 
 .posterInfo {
@@ -529,16 +542,16 @@ h2 {
 .apply {
   width: 100%;
   margin-top: 5px;
-  border-color: color-mix(in srgb, var(--green) 70%, black);
-  background: linear-gradient(180deg, #91d7b2, var(--green));
-  color: #07150b;
+  border-color: color-mix(in srgb, var(--accent-warm) 72%, black);
+  background: linear-gradient(180deg, #f8d88e, var(--accent-warm));
+  color: #171005;
 }
 
 .loadMore {
   grid-column: 1 / -1;
   min-height: 52px;
-  border-color: var(--line-2);
-  background: var(--surface-2);
+  border-color: var(--line);
+  background: linear-gradient(180deg, #1b2630, #141c24);
   color: var(--text);
 }
 
@@ -555,8 +568,8 @@ h2 {
   align-content: center;
   gap: 12px;
   border: 1px dashed var(--line);
-  border-radius: 12px;
-  background: rgb(22 25 31 / 0.45);
+  border-radius: 8px;
+  background: rgb(15 21 28 / 0.62);
   color: var(--muted);
   text-align: center;
 }
@@ -565,7 +578,7 @@ h2 {
   width: 28px;
   height: 28px;
   border: 3px solid rgb(255 255 255 / 0.12);
-  border-top-color: var(--gold);
+  border-top-color: var(--accent);
   border-radius: 50%;
   animation: spin 800ms linear infinite;
 }
@@ -577,6 +590,26 @@ h2 {
 
 .busy {
   cursor: progress;
+}
+
+* {
+  scrollbar-color: var(--line-2) transparent;
+}
+
+*::-webkit-scrollbar {
+  width: 11px;
+  height: 11px;
+}
+
+*::-webkit-scrollbar-thumb {
+  border: 3px solid transparent;
+  border-radius: 999px;
+  background: var(--line-2);
+  background-clip: content-box;
+}
+
+*::-webkit-scrollbar-corner {
+  background: transparent;
 }
 
 @keyframes spin {
