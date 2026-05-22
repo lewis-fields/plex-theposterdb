@@ -10,6 +10,16 @@ The Poster Database does not currently expose a supported public search API. Thi
 
 ## Run
 
+Install Python dependencies first:
+
+```bash
+python3 -m pip install -r requirements.txt
+```
+
+The app currently has no third-party runtime dependencies, so this keeps setup ready for future packages without installing anything extra.
+
+Start the app:
+
 ```bash
 python3 server.py
 ```
