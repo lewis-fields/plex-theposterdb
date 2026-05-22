@@ -428,7 +428,7 @@ h2 {
 
 .posterControls {
   display: grid;
-  grid-template-columns: minmax(220px, 1fr) minmax(190px, 240px) minmax(180px, 300px);
+  grid-template-columns: repeat(auto-fit, minmax(min(220px, 100%), 1fr));
   gap: 12px;
   padding: 14px 18px;
   border-bottom: 1px solid var(--line);
