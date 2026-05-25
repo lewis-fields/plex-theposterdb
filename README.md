@@ -71,6 +71,8 @@ poster.jpg
 
 or `poster.png` / `poster.webp` if TPDb serves that format.
 
+When a saved poster changes extension, the app removes older local poster files for the same Plex asset name first, such as replacing an old `poster.jpg` with a new `poster.png`.
+
 For typical Plex local assets:
 
 - Movies: saves beside the movie file.

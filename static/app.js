@@ -42,6 +42,7 @@ const elements = {
   creatorFilter: document.querySelector("#creatorFilter"),
   targetList: document.querySelector("#targetList"),
   posterGrid: document.querySelector("#posterGrid"),
+  posterActions: document.querySelector("#posterActions"),
 };
 
 function setStatus(message, isError = false) {
@@ -66,7 +67,7 @@ function setApplyMode(mode) {
   elements.applyMode.value = state.applyMode;
   localStorage.setItem("applyMode", state.applyMode);
   if (state.posters.length) {
-    renderPosters(state.posters);
+    renderPosters(state.posters, state.posterHasMore && state.posterPageLimit < maxPosterPageLimit);
   }
 }
 
@@ -271,6 +272,7 @@ async function searchTpdb() {
   elements.targetList.innerHTML = "";
   elements.posterGrid.innerHTML = loadingMarkup("Searching TPDb");
   elements.posterGrid.classList.add("empty");
+  elements.posterActions.innerHTML = "";
   const term = elements.tpdbSearchTerm.value.trim() || state.selectedItem.title;
   const payload = await api(
     `/api/tpdb/search?term=${encodeURIComponent(term)}&type=${encodeURIComponent(state.selectedItem.type)}&maxPages=${state.searchPageLimit}`,
@@ -331,6 +333,8 @@ function renderTargets(targets, hasMore = false) {
 
 async function loadPosters(url, activeButton, pageLimit = state.posterPageLimit) {
   const posterUrl = posterUrlForSelection(url);
+  const previousPosterCount = state.posters.length;
+  const isLoadingMore = pageLimit > state.posterPageLimit && previousPosterCount > 0;
   state.selectedTargetBaseUrl = url;
   state.selectedTargetUrl = posterUrl;
   state.posterPageLimit = Math.min(pageLimit, maxPosterPageLimit);
@@ -340,12 +344,16 @@ async function loadPosters(url, activeButton, pageLimit = state.posterPageLimit)
   const loadingLabel = state.selectedItem?.type === "season" ? "Loading season poster pages" : "Loading poster pages";
   setStatus(loadingLabel + "...");
   elements.posterGrid.innerHTML = loadingMarkup(loadingLabel);
+  elements.posterActions.innerHTML = "";
   const payload = await api(`/api/tpdb/posters?url=${encodeURIComponent(posterUrl)}&maxPages=${state.posterPageLimit}`);
   state.posters = payload.posters;
   state.posterHasMore = payload.hasMore;
   state.allPosterPagesLoaded = !payload.hasMore;
   elements.creatorFilter.disabled = state.posters.length === 0;
   renderPosters(payload.posters, payload.hasMore && state.posterPageLimit < maxPosterPageLimit);
+  if (isLoadingMore) {
+    alignFirstNewPoster(previousPosterCount);
+  }
   if (!payload.posters.length) {
     setStatus("No posters found on that TPDb page.");
     return;
@@ -368,6 +376,7 @@ async function loadAllPostersForCreator() {
   }
   setStatus(`Searching all TPDb poster pages for ${creator}...`);
   elements.posterGrid.innerHTML = loadingMarkup("Searching all poster pages");
+  elements.posterActions.innerHTML = "";
   const payload = await api(`/api/tpdb/posters?url=${encodeURIComponent(state.selectedTargetUrl)}&allPages=1`);
   state.posters = payload.posters;
   state.posterHasMore = payload.hasMore;
@@ -391,6 +400,7 @@ function renderPosters(posters, hasMore = false) {
   const visiblePosters = visiblePostersForCreator(posters);
 
   elements.posterGrid.innerHTML = "";
+  elements.posterActions.innerHTML = "";
   elements.posterGrid.classList.toggle("empty", visiblePosters.length === 0);
   if (!visiblePosters.length) {
     elements.posterGrid.innerHTML = `<div class="emptyState">${posters.length ? "No posters match that creator." : "No poster assets were visible on this page."}</div>`;
@@ -418,7 +428,15 @@ function renderPosters(posters, hasMore = false) {
     moreButton.className = "loadMore";
     moreButton.textContent = "Load more poster pages";
     moreButton.addEventListener("click", () => run(() => loadPosters(state.selectedTargetBaseUrl, activeTargetButton(), state.posterPageLimit + 1)));
-    elements.posterGrid.append(moreButton);
+    elements.posterActions.append(moreButton);
+  }
+}
+
+function alignFirstNewPoster(previousPosterCount) {
+  const cards = elements.posterGrid.querySelectorAll(".posterCard");
+  const targetCard = cards[previousPosterCount];
+  if (targetCard) {
+    targetCard.scrollIntoView({ block: "start", behavior: "smooth" });
   }
 }
 
@@ -473,6 +491,7 @@ function clearPosterPane() {
   elements.targetList.innerHTML = "";
   elements.posterGrid.innerHTML = '<div class="emptyState">Poster choices will appear here.</div>';
   elements.posterGrid.classList.add("empty");
+  elements.posterActions.innerHTML = "";
 }
 
 function loadingMarkup(label) {

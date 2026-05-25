@@ -239,7 +239,7 @@ def season_items(show_key: str, section_key: str = "") -> dict[str, Any]:
 
 
 def refresh_item(rating_key: str) -> None:
-    request_bytes(plex_url(f"/library/metadata/{urllib.parse.quote(rating_key)}/refresh"))
+    request_bytes(plex_url(f"/library/metadata/{urllib.parse.quote(rating_key)}/refresh", {"force": "1"}), method="PUT")
 
 
 def remove_overlay_label(item: dict[str, Any]) -> None:
@@ -258,6 +258,27 @@ def remove_overlay_label(item: dict[str, Any]) -> None:
                 "id": rating_key,
                 "label.locked": "1",
                 "label[].tag.tag-": "Overlay",
+            },
+        ),
+        method="PUT",
+    )
+
+
+def unlock_poster_field(item: dict[str, Any]) -> None:
+    rating_key = str(item.get("ratingKey") or "")
+    section_key = str(item.get("sectionKey") or "")
+    item_type = str(item.get("type") or "")
+    edit_type = PLEX_EDIT_TYPES.get(item_type)
+    if not rating_key or not section_key or not edit_type:
+        raise AppError("Plex item metadata is missing the library details needed to unlock the poster field.")
+
+    request_bytes(
+        plex_url(
+            f"/library/sections/{urllib.parse.quote(section_key)}/all",
+            {
+                "type": edit_type,
+                "id": rating_key,
+                "thumb.locked": "0",
             },
         ),
         method="PUT",
@@ -441,23 +462,36 @@ def choose_extension(content_type: str, image_url: str) -> str:
 
 
 def local_poster_filename(item: dict[str, Any], extension: str) -> str:
+    return f"{local_poster_stem(item)}{extension}"
+
+
+def local_poster_stem(item: dict[str, Any]) -> str:
     if item.get("type") != "season":
-        return f"poster{extension}"
+        return "poster"
 
     index = str(item.get("index") or "")
     if index == "0" or str(item.get("title") or "").strip().lower() == "specials":
-        return f"season-specials-poster{extension}"
+        return "season-specials-poster"
     try:
-        return f"season{int(index):02d}{extension}"
+        return f"season{int(index):02d}"
     except ValueError:
-        return f"poster{extension}"
+        return "poster"
+
+
+def remove_stale_local_posters(folder: Path, destination: Path, stem: str) -> None:
+    for extension in (".jpg", ".jpeg", ".png", ".webp"):
+        stale_path = folder / f"{stem}{extension}"
+        if stale_path != destination and stale_path.exists():
+            stale_path.unlink()
 
 
 def save_local_poster(image_url: str, item: dict[str, Any], content: bytes, content_type: str) -> dict[str, str]:
     extension = choose_extension(content_type, image_url)
     folder = media_folder(item)
     folder.mkdir(parents=True, exist_ok=True)
-    destination = folder / local_poster_filename(item, extension)
+    stem = local_poster_stem(item)
+    destination = folder / f"{stem}{extension}"
+    remove_stale_local_posters(folder, destination, stem)
     destination.write_bytes(content)
     return {"mode": "local", "path": str(destination), "bytes": str(len(content))}
 
@@ -477,21 +511,27 @@ def upload_plex_poster(item: dict[str, Any], content: bytes, content_type: str) 
 
 
 def apply_poster(image_url: str, item: dict[str, Any], mode: str) -> dict[str, str | bool]:
+    config = Config.load()
     content, content_type = fetch_image(image_url)
+    overlay_label_removed = False
     if mode == "plex":
         result: dict[str, str | bool] = upload_plex_poster(item, content, content_type)
+        if config.remove_overlay_label_on_apply:
+            remove_overlay_label(item)
+            overlay_label_removed = True
     elif mode == "local":
         result = save_local_poster(image_url, item, content, content_type)
+        if config.remove_overlay_label_on_apply:
+            remove_overlay_label(item)
+            overlay_label_removed = True
         rating_key = str(item.get("ratingKey") or "")
         if rating_key:
+            unlock_poster_field(item)
             refresh_item(rating_key)
     else:
         raise AppError("Unknown poster apply mode.")
 
-    result["overlayLabelRemoved"] = False
-    if Config.load().remove_overlay_label_on_apply:
-        remove_overlay_label(item)
-        result["overlayLabelRemoved"] = True
+    result["overlayLabelRemoved"] = overlay_label_removed
     return result
 
 

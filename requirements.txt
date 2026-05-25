@@ -1,0 +1,2 @@
+# This app currently uses only the Python standard library.
+# Keep third-party runtime dependencies here if they are added later.

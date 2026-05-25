@@ -1,5 +1,7 @@
 import unittest
+from tempfile import TemporaryDirectory
 import xml.etree.ElementTree as ET
+from pathlib import Path
 from unittest.mock import patch
 
 import server
@@ -27,6 +29,86 @@ class RemoveOverlayLabelTests(unittest.TestCase):
     def test_requires_plex_library_details(self):
         with self.assertRaisesRegex(server.AppError, "library details"):
             server.remove_overlay_label({"ratingKey": "42", "type": "movie"})
+
+
+class UnlockPosterFieldTests(unittest.TestCase):
+    def test_unlocks_selected_plex_item_poster_field(self):
+        item = {"ratingKey": "42", "sectionKey": "7", "type": "movie"}
+
+        with patch.object(server, "plex_url", return_value="http://plex/edit") as plex_url:
+            with patch.object(server, "request_bytes") as request_bytes:
+                server.unlock_poster_field(item)
+
+        plex_url.assert_called_once_with(
+            "/library/sections/7/all",
+            {
+                "type": "1",
+                "id": "42",
+                "thumb.locked": "0",
+            },
+        )
+        request_bytes.assert_called_once_with("http://plex/edit", method="PUT")
+
+    def test_requires_plex_library_details(self):
+        with self.assertRaisesRegex(server.AppError, "library details"):
+            server.unlock_poster_field({"ratingKey": "42", "type": "movie"})
+
+
+class ApplyPosterTests(unittest.TestCase):
+    def test_local_apply_removes_overlay_before_refreshing_plex(self):
+        calls = []
+        config = server.Config(remove_overlay_label_on_apply=True)
+        item = {"ratingKey": "42", "sectionKey": "7", "type": "movie", "file": r"D:\Movie\Movie.mkv"}
+
+        with patch.object(server.Config, "load", return_value=config):
+            with patch.object(server, "fetch_image", return_value=(b"poster", "image/jpeg")):
+                with patch.object(server, "save_local_poster", side_effect=lambda *args: calls.append("save") or {"mode": "local"}):
+                    with patch.object(server, "remove_overlay_label", side_effect=lambda *args: calls.append("remove")):
+                        with patch.object(server, "unlock_poster_field", side_effect=lambda *args: calls.append("unlock")):
+                            with patch.object(server, "refresh_item", side_effect=lambda *args: calls.append("refresh")):
+                                result = server.apply_poster("https://image", item, "local")
+
+        self.assertTrue(result["overlayLabelRemoved"])
+        self.assertEqual(calls, ["save", "remove", "unlock", "refresh"])
+
+    def test_local_apply_unlocks_poster_before_refreshing_even_without_overlay_removal(self):
+        calls = []
+        config = server.Config(remove_overlay_label_on_apply=False)
+        item = {"ratingKey": "42", "sectionKey": "7", "type": "movie", "file": r"D:\Movie\Movie.mkv"}
+
+        with patch.object(server.Config, "load", return_value=config):
+            with patch.object(server, "fetch_image", return_value=(b"poster", "image/jpeg")):
+                with patch.object(server, "save_local_poster", side_effect=lambda *args: calls.append("save") or {"mode": "local"}):
+                    with patch.object(server, "unlock_poster_field", side_effect=lambda *args: calls.append("unlock")):
+                        with patch.object(server, "refresh_item", side_effect=lambda *args: calls.append("refresh")):
+                            result = server.apply_poster("https://image", item, "local")
+
+        self.assertFalse(result["overlayLabelRemoved"])
+        self.assertEqual(calls, ["save", "unlock", "refresh"])
+
+    def test_plex_apply_removes_overlay_after_uploading_poster(self):
+        calls = []
+        config = server.Config(remove_overlay_label_on_apply=True)
+        item = {"ratingKey": "42", "sectionKey": "7", "type": "movie"}
+
+        with patch.object(server.Config, "load", return_value=config):
+            with patch.object(server, "fetch_image", return_value=(b"poster", "image/jpeg")):
+                with patch.object(server, "upload_plex_poster", side_effect=lambda *args: calls.append("upload") or {"mode": "plex"}):
+                    with patch.object(server, "remove_overlay_label", side_effect=lambda *args: calls.append("remove")):
+                        result = server.apply_poster("https://image", item, "plex")
+
+        self.assertTrue(result["overlayLabelRemoved"])
+        self.assertEqual(calls, ["upload", "remove"])
+
+
+class RefreshItemTests(unittest.TestCase):
+    def test_forces_metadata_refresh_with_put(self):
+        with patch.object(server, "plex_url", return_value="http://plex/refresh") as plex_url:
+            with patch.object(server, "request_bytes") as request_bytes:
+                server.refresh_item("42")
+
+        plex_url.assert_called_once_with("/library/metadata/42/refresh", {"force": "1"})
+        request_bytes.assert_called_once_with("http://plex/refresh", method="PUT")
 
 
 class PathMappingTests(unittest.TestCase):
@@ -137,6 +219,46 @@ class LocalPosterFilenameTests(unittest.TestCase):
 
     def test_keeps_standard_poster_name_for_non_season_items(self):
         self.assertEqual(server.local_poster_filename({"type": "show"}, ".jpg"), "poster.jpg")
+
+
+class SaveLocalPosterTests(unittest.TestCase):
+    def test_replaces_stale_movie_poster_extensions(self):
+        with TemporaryDirectory() as temp_dir:
+            folder = Path(temp_dir)
+            (folder / "poster.jpg").write_bytes(b"old-jpg")
+            (folder / "poster.webp").write_bytes(b"old-webp")
+
+            with patch.object(server, "media_folder", return_value=folder):
+                result = server.save_local_poster(
+                    "https://theposterdb.com/api/assets/1/view",
+                    {"type": "movie"},
+                    b"new-png",
+                    "image/png",
+                )
+
+            self.assertEqual(Path(result["path"]).name, "poster.png")
+            self.assertEqual((folder / "poster.png").read_bytes(), b"new-png")
+            self.assertFalse((folder / "poster.jpg").exists())
+            self.assertFalse((folder / "poster.webp").exists())
+
+    def test_replaces_stale_numbered_season_poster_extensions(self):
+        with TemporaryDirectory() as temp_dir:
+            folder = Path(temp_dir)
+            (folder / "season01.jpg").write_bytes(b"old-season")
+            (folder / "poster.jpg").write_bytes(b"unrelated")
+
+            with patch.object(server, "media_folder", return_value=folder):
+                result = server.save_local_poster(
+                    "https://theposterdb.com/api/assets/1/view",
+                    {"type": "season", "index": "1"},
+                    b"new-season",
+                    "image/png",
+                )
+
+            self.assertEqual(Path(result["path"]).name, "season01.png")
+            self.assertEqual((folder / "season01.png").read_bytes(), b"new-season")
+            self.assertFalse((folder / "season01.jpg").exists())
+            self.assertTrue((folder / "poster.jpg").exists())
 
 
 if __name__ == "__main__":
