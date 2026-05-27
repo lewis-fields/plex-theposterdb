@@ -304,6 +304,11 @@ def clean_text(value: str) -> str:
     return re.sub(r"\s+", " ", value).strip()
 
 
+def search_target_year(title: str) -> str:
+    match = re.search(r"\((\d{4})\)", title)
+    return match.group(1) if match else ""
+
+
 def parse_search_targets(html: str, media_type: str) -> list[dict[str, str]]:
     candidates = []
     category = "posters" if media_type in {"movie", "show", "season"} else "posters"
@@ -312,7 +317,14 @@ def parse_search_targets(html: str, media_type: str) -> list[dict[str, str]]:
         title = clean_text(match.group(2))
         if not title:
             continue
-        candidates.append({"title": title, "url": absolute_url(unescape(match.group(1))), "category": category})
+        candidates.append(
+            {
+                "title": title,
+                "url": absolute_url(unescape(match.group(1))),
+                "category": category,
+                "year": search_target_year(title),
+            }
+        )
     return candidates
 
 

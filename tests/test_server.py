@@ -189,6 +189,17 @@ class SeasonItemsTests(unittest.TestCase):
 
 
 class PosterParsingTests(unittest.TestCase):
+    def test_search_targets_include_year_from_title(self):
+        html = """
+        <a href="/posters/123">Star Wars: Episode IV - A New Hope (1977)</a>
+        <a href="/posters/456">Star Wars Collection (N/A)</a>
+        """
+
+        targets = server.parse_search_targets(html, "movie")
+
+        self.assertEqual(targets[0]["year"], "1977")
+        self.assertEqual(targets[1]["year"], "")
+
     def test_card_preview_uses_full_asset_for_apply_url(self):
         html = """
         <div class="hovereffect rounded-poster">

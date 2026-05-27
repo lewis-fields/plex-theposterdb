@@ -38,6 +38,7 @@ const elements = {
   selectedMeta: document.querySelector("#selectedMeta"),
   searchTpdb: document.querySelector("#searchTpdb"),
   tpdbSearchTerm: document.querySelector("#tpdbSearchTerm"),
+  tpdbYearFilter: document.querySelector("#tpdbYearFilter"),
   applyMode: document.querySelector("#applyMode"),
   creatorFilter: document.querySelector("#creatorFilter"),
   targetList: document.querySelector("#targetList"),
@@ -59,6 +60,7 @@ function setBusy(isBusy) {
   }
   elements.searchTpdb.disabled = isBusy || !state.selectedItem;
   elements.tpdbSearchTerm.disabled = !state.selectedItem;
+  elements.tpdbYearFilter.disabled = !state.selectedItem;
   elements.creatorFilter.disabled = state.posters.length === 0;
 }
 
@@ -253,9 +255,11 @@ function selectItem(item) {
   elements.selectedTitle.textContent = displayTitle;
   elements.selectedMeta.textContent = selectedItemMeta(item);
   elements.tpdbSearchTerm.value = item.searchTitle || item.parentTitle || item.title;
+  elements.tpdbYearFilter.value = item.year || "";
   elements.creatorFilter.value = "";
   elements.searchTpdb.disabled = false;
   elements.tpdbSearchTerm.disabled = false;
+  elements.tpdbYearFilter.disabled = false;
   elements.creatorFilter.disabled = true;
   elements.targetList.innerHTML = "";
   elements.posterGrid.innerHTML = '<div class="emptyState">Search TPDb to load poster choices.</div>';
@@ -277,16 +281,20 @@ async function searchTpdb() {
   const payload = await api(
     `/api/tpdb/search?term=${encodeURIComponent(term)}&type=${encodeURIComponent(state.selectedItem.type)}&maxPages=${state.searchPageLimit}`,
   );
-  renderTargets(payload.targets, payload.hasMore && state.searchPageLimit < maxSearchPageLimit);
-  if (!payload.targets.length) {
-    setStatus("No TPDb search results found.");
+  const targets = yearFilteredTargets(payload.targets);
+  renderTargets(targets, payload.hasMore && state.searchPageLimit < maxSearchPageLimit);
+  if (!targets.length) {
+    const year = activeYearFilter();
+    const moreText = payload.hasMore ? " Load more title results to search deeper." : "";
+    setStatus(year ? `No TPDb title results matched ${year} in the loaded results.${moreText}` : "No TPDb search results found.");
     return;
   }
   const searchPageText = `${payload.pagesFetched || 1} search page${payload.pagesFetched === 1 ? "" : "s"}`;
   const moreText = payload.hasMore ? " Load more title results to search deeper." : "";
-  setStatus(`${payload.targets.length} TPDb title results found across ${searchPageText}.${moreText}`);
-  if (payload.targets.length === 1) {
-    await loadPosters(payload.targets[0].url, elements.targetList.querySelector(".target"), 1);
+  const yearText = activeYearFilter() ? ` matching ${activeYearFilter()}` : "";
+  setStatus(`${targets.length} TPDb title result${targets.length === 1 ? "" : "s"}${yearText} found across ${searchPageText}.${moreText}`);
+  if (targets.length === 1) {
+    await loadPosters(targets[0].url, elements.targetList.querySelector(".target"), 1);
     return;
   }
   elements.posterGrid.innerHTML = '<div class="emptyState">Choose the matching TPDb title result to load posters.</div>';
@@ -300,16 +308,17 @@ async function loadMoreTargets() {
   const payload = await api(
     `/api/tpdb/search?term=${encodeURIComponent(term)}&type=${encodeURIComponent(state.selectedItem.type)}&maxPages=${state.searchPageLimit}`,
   );
-  renderTargets(payload.targets, payload.hasMore && state.searchPageLimit < maxSearchPageLimit);
+  const targets = yearFilteredTargets(payload.targets);
+  renderTargets(targets, payload.hasMore && state.searchPageLimit < maxSearchPageLimit);
   const moreText = payload.hasMore ? " More title results are still available." : "";
-  setStatus(`${payload.targets.length} TPDb title results loaded from ${payload.pagesFetched} search pages.${moreText}`);
+  const yearText = activeYearFilter() ? ` matching ${activeYearFilter()}` : "";
+  setStatus(`${targets.length} TPDb title result${targets.length === 1 ? "" : "s"}${yearText} loaded from ${payload.pagesFetched} search pages.${moreText}`);
 }
 
 function renderTargets(targets, hasMore = false) {
   elements.targetList.innerHTML = "";
   if (!targets.length) {
-    elements.posterGrid.innerHTML = '<div class="emptyState">No TPDb result matched this title.</div>';
-    return;
+    elements.posterGrid.innerHTML = `<div class="emptyState">${activeYearFilter() ? "No TPDb result matched that title and year." : "No TPDb result matched this title."}</div>`;
   }
   for (const target of targets) {
     const button = document.createElement("button");
@@ -329,6 +338,17 @@ function renderTargets(targets, hasMore = false) {
     moreButton.addEventListener("click", () => run(loadMoreTargets));
     elements.targetList.append(moreButton);
   }
+}
+
+function activeYearFilter() {
+  const year = elements.tpdbYearFilter.value.trim();
+  return /^\d{4}$/.test(year) ? year : "";
+}
+
+function yearFilteredTargets(targets) {
+  const year = activeYearFilter();
+  if (!year) return targets;
+  return targets.filter((target) => target.year === year || target.title.includes(`(${year})`));
 }
 
 async function loadPosters(url, activeButton, pageLimit = state.posterPageLimit) {
@@ -486,6 +506,8 @@ function clearPosterPane() {
   elements.searchTpdb.disabled = true;
   elements.tpdbSearchTerm.value = "";
   elements.tpdbSearchTerm.disabled = true;
+  elements.tpdbYearFilter.value = "";
+  elements.tpdbYearFilter.disabled = true;
   elements.creatorFilter.value = "";
   elements.creatorFilter.disabled = true;
   elements.targetList.innerHTML = "";
@@ -529,6 +551,11 @@ elements.librarySelect.addEventListener("change", () => run(loadItems));
 elements.refreshItems.addEventListener("click", () => run(loadItems));
 elements.itemFilter.addEventListener("input", renderItems);
 elements.tpdbSearchTerm.addEventListener("keydown", (event) => {
+  if (event.key === "Enter") {
+    run(searchTpdb);
+  }
+});
+elements.tpdbYearFilter.addEventListener("keydown", (event) => {
   if (event.key === "Enter") {
     run(searchTpdb);
   }
