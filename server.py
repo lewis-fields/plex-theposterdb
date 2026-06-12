@@ -7,6 +7,7 @@ import os
 import re
 import ssl
 import sys
+import threading
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -596,6 +597,12 @@ class Handler(BaseHTTPRequestHandler):
                     raise AppError("No poster image URL provided.")
                 result = apply_poster(image_url, item, mode)
                 self.send_json({"ok": True, **result})
+                return
+            if parsed.path == "/api/shutdown":
+                if self.headers.get("X-TPDB-Stop") != "1":
+                    raise AppError("Shutdown request is missing the stop header.", 403)
+                self.send_json({"ok": True})
+                threading.Thread(target=self.server.shutdown, daemon=True).start()
                 return
             raise AppError("Unknown endpoint.", 404)
         except AppError as exc:
