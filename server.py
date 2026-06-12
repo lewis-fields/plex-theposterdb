@@ -27,6 +27,7 @@ TPDB_MAX_POSTER_PAGES = 12
 TPDB_MAX_SEARCH_PAGES = 6
 USER_AGENT = "TPDb Plex Poster Picker/0.1 (+local app)"
 PLEX_EDIT_TYPES = {"movie": "1", "show": "2", "season": "3"}
+PLEX_APPLY_TIMEOUT = 8
 
 
 class AppError(Exception):
@@ -82,6 +83,8 @@ def request_bytes(
     except urllib.error.HTTPError as exc:
         detail = exc.read().decode("utf-8", errors="replace")[:300]
         raise AppError(f"Request failed with HTTP {exc.code}: {detail}", exc.code) from exc
+    except TimeoutError as exc:
+        raise AppError(f"Request timed out after {timeout} seconds.", 504) from exc
     except urllib.error.URLError as exc:
         raise AppError(f"Request failed: {exc.reason}", 502) from exc
 
@@ -239,7 +242,11 @@ def season_items(show_key: str, section_key: str = "") -> dict[str, Any]:
 
 
 def refresh_item(rating_key: str) -> None:
-    request_bytes(plex_url(f"/library/metadata/{urllib.parse.quote(rating_key)}/refresh", {"force": "1"}), method="PUT")
+    request_bytes(
+        plex_url(f"/library/metadata/{urllib.parse.quote(rating_key)}/refresh", {"force": "1"}),
+        method="PUT",
+        timeout=PLEX_APPLY_TIMEOUT,
+    )
 
 
 def remove_overlay_label(item: dict[str, Any]) -> None:
@@ -261,6 +268,7 @@ def remove_overlay_label(item: dict[str, Any]) -> None:
             },
         ),
         method="PUT",
+        timeout=PLEX_APPLY_TIMEOUT,
     )
 
 
@@ -282,6 +290,7 @@ def unlock_poster_field(item: dict[str, Any]) -> None:
             },
         ),
         method="PUT",
+        timeout=PLEX_APPLY_TIMEOUT,
     )
 
 
@@ -533,13 +542,16 @@ def apply_poster(image_url: str, item: dict[str, Any], mode: str) -> dict[str, s
             overlay_label_removed = True
     elif mode == "local":
         result = save_local_poster(image_url, item, content, content_type)
-        if config.remove_overlay_label_on_apply:
-            remove_overlay_label(item)
-            overlay_label_removed = True
-        rating_key = str(item.get("ratingKey") or "")
-        if rating_key:
-            unlock_poster_field(item)
-            refresh_item(rating_key)
+        try:
+            if config.remove_overlay_label_on_apply:
+                remove_overlay_label(item)
+                overlay_label_removed = True
+            rating_key = str(item.get("ratingKey") or "")
+            if rating_key:
+                unlock_poster_field(item)
+                refresh_item(rating_key)
+        except AppError as exc:
+            result["plexUpdateError"] = str(exc)
     else:
         raise AppError("Unknown poster apply mode.")
 

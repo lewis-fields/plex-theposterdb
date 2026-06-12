@@ -479,7 +479,8 @@ async function applyPoster(imageUrl) {
   });
   const posterStatus = payload.mode === "plex" ? "Poster set directly in Plex." : `Poster saved: ${payload.path}`;
   const overlayStatus = payload.overlayLabelRemoved ? " Kometa Overlay label removed." : "";
-  setStatus(posterStatus + overlayStatus);
+  const plexWarning = payload.plexUpdateError ? ` Plex refresh did not finish: ${payload.plexUpdateError}` : "";
+  setStatus(posterStatus + overlayStatus + plexWarning, Boolean(payload.plexUpdateError));
 }
 
 function selectedItemMeta(item) {

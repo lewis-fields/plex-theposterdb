@@ -24,7 +24,7 @@ class RemoveOverlayLabelTests(unittest.TestCase):
                 "label[].tag.tag-": "Overlay",
             },
         )
-        request_bytes.assert_called_once_with("http://plex/edit", method="PUT")
+        request_bytes.assert_called_once_with("http://plex/edit", method="PUT", timeout=server.PLEX_APPLY_TIMEOUT)
 
     def test_requires_plex_library_details(self):
         with self.assertRaisesRegex(server.AppError, "library details"):
@@ -47,7 +47,7 @@ class UnlockPosterFieldTests(unittest.TestCase):
                 "thumb.locked": "0",
             },
         )
-        request_bytes.assert_called_once_with("http://plex/edit", method="PUT")
+        request_bytes.assert_called_once_with("http://plex/edit", method="PUT", timeout=server.PLEX_APPLY_TIMEOUT)
 
     def test_requires_plex_library_details(self):
         with self.assertRaisesRegex(server.AppError, "library details"):
@@ -86,6 +86,21 @@ class ApplyPosterTests(unittest.TestCase):
         self.assertFalse(result["overlayLabelRemoved"])
         self.assertEqual(calls, ["save", "unlock", "refresh"])
 
+    def test_local_apply_returns_saved_poster_when_plex_refresh_fails(self):
+        config = server.Config(remove_overlay_label_on_apply=False)
+        item = {"ratingKey": "42", "sectionKey": "7", "type": "movie", "file": r"D:\Movie\Movie.mkv"}
+
+        with patch.object(server.Config, "load", return_value=config):
+            with patch.object(server, "fetch_image", return_value=(b"poster", "image/jpeg")):
+                with patch.object(server, "save_local_poster", return_value={"mode": "local", "path": r"D:\Movie\poster.jpg"}):
+                    with patch.object(server, "unlock_poster_field"):
+                        with patch.object(server, "refresh_item", side_effect=server.AppError("Request timed out after 8 seconds.", 504)):
+                            result = server.apply_poster("https://image", item, "local")
+
+        self.assertEqual(result["mode"], "local")
+        self.assertEqual(result["path"], r"D:\Movie\poster.jpg")
+        self.assertEqual(result["plexUpdateError"], "Request timed out after 8 seconds.")
+
     def test_plex_apply_removes_overlay_after_uploading_poster(self):
         calls = []
         config = server.Config(remove_overlay_label_on_apply=True)
@@ -108,7 +123,7 @@ class RefreshItemTests(unittest.TestCase):
                 server.refresh_item("42")
 
         plex_url.assert_called_once_with("/library/metadata/42/refresh", {"force": "1"})
-        request_bytes.assert_called_once_with("http://plex/refresh", method="PUT")
+        request_bytes.assert_called_once_with("http://plex/refresh", method="PUT", timeout=server.PLEX_APPLY_TIMEOUT)
 
 
 class PathMappingTests(unittest.TestCase):
