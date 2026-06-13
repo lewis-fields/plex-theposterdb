@@ -15,11 +15,13 @@ const state = {
   posterHasMore: false,
   allPosterPagesLoaded: false,
   applyMode: localStorage.getItem("applyMode") || "plex",
+  sidebarCollapsed: localStorage.getItem("sidebarCollapsed") === "true",
   busy: false,
 };
 let creatorFilterTimer;
 
 const elements = {
+  sidebarToggle: document.querySelector("#sidebarToggle"),
   configForm: document.querySelector("#configForm"),
   plexUrl: document.querySelector("#plexUrl"),
   plexToken: document.querySelector("#plexToken"),
@@ -56,12 +58,25 @@ function setBusy(isBusy) {
   state.busy = isBusy;
   document.body.classList.toggle("busy", isBusy);
   for (const button of document.querySelectorAll("button")) {
+    if (button.dataset.keepEnabled === "true") continue;
     button.disabled = isBusy || button.dataset.locked === "true";
   }
   elements.searchTpdb.disabled = isBusy || !state.selectedItem;
   elements.tpdbSearchTerm.disabled = !state.selectedItem;
   elements.tpdbYearFilter.disabled = !state.selectedItem;
   elements.creatorFilter.disabled = state.posters.length === 0;
+}
+
+function setSidebarCollapsed(isCollapsed) {
+  state.sidebarCollapsed = Boolean(isCollapsed);
+  document.body.classList.toggle("sidebarCollapsed", state.sidebarCollapsed);
+  elements.sidebarToggle.setAttribute("aria-expanded", String(!state.sidebarCollapsed));
+  elements.sidebarToggle.setAttribute(
+    "aria-label",
+    state.sidebarCollapsed ? "Show configuration panel" : "Hide configuration panel",
+  );
+  elements.sidebarToggle.querySelector(".toggleIcon").textContent = state.sidebarCollapsed ? ">" : "<";
+  localStorage.setItem("sidebarCollapsed", String(state.sidebarCollapsed));
 }
 
 function setApplyMode(mode) {
@@ -571,6 +586,8 @@ elements.creatorFilter.addEventListener("input", () => {
 });
 elements.applyMode.addEventListener("change", () => setApplyMode(elements.applyMode.value));
 elements.searchTpdb.addEventListener("click", () => run(searchTpdb));
+elements.sidebarToggle.addEventListener("click", () => setSidebarCollapsed(!state.sidebarCollapsed));
 
+setSidebarCollapsed(state.sidebarCollapsed);
 setApplyMode(state.applyMode);
 run(loadConfig);
