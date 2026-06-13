@@ -15,8 +15,8 @@ import xml.etree.ElementTree as ET
 from dataclasses import dataclass
 from html import unescape
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from pathlib import Path
-from typing import Any
+from pathlib import Path, PureWindowsPath
+from typing import Any, Callable
 
 
 ROOT = Path(__file__).resolve().parent
@@ -108,15 +108,51 @@ def map_plex_path(path: str) -> str:
     for mapping in mappings:
         plex_prefix = mapping.get("plex", "").rstrip("/\\") or mapping.get("plex", "")
         local_prefix = mapping.get("local", "")
-        path_matches_root = path == plex_prefix or path.startswith(f"{plex_prefix}/") or path.startswith(f"{plex_prefix}\\")
+        path_matches_root = mapped_prefix_matches(path, plex_prefix)
         if plex_prefix and local_prefix and path_matches_root:
-            return local_prefix.rstrip("/\\") + path[len(plex_prefix) :]
+            return join_mapped_path(local_prefix, path[len(plex_prefix) :])
     return path
 
 
+def mapped_prefix_matches(path: str, plex_prefix: str) -> bool:
+    if not plex_prefix:
+        return False
+    path_to_compare = path
+    prefix_to_compare = plex_prefix
+    if "\\" in path or "\\" in plex_prefix:
+        path_to_compare = path.lower()
+        prefix_to_compare = plex_prefix.lower()
+    return (
+        path_to_compare == prefix_to_compare
+        or path_to_compare.startswith(f"{prefix_to_compare}/")
+        or path_to_compare.startswith(f"{prefix_to_compare}\\")
+    )
+
+
+def join_mapped_path(local_prefix: str, suffix: str) -> str:
+    suffix_parts = [part for part in re.split(r"[\\/]+", suffix.strip("/\\")) if part]
+    if not suffix_parts:
+        return local_prefix
+    if "\\" in local_prefix and "/" not in local_prefix:
+        return str(PureWindowsPath(local_prefix, *suffix_parts))
+    return str(Path(local_prefix, *suffix_parts))
+
+
+def plex_parent_path(path: str) -> str:
+    if "\\" in path and "/" not in path:
+        return str(PureWindowsPath(path).parent)
+    return str(Path(path).parent)
+
+
+def plex_join_path(parent: str, child: str) -> str:
+    if "\\" in parent and "/" not in parent:
+        return str(PureWindowsPath(parent, child))
+    return str(Path(parent, child))
+
+
 def media_folder(item: dict[str, Any]) -> Path:
-    folder_path = item.get("folder")
-    if folder_path:
+    folder_path = str(item.get("folder") or "")
+    if folder_path and folder_path != ".":
         return Path(map_plex_path(folder_path))
     file_path = item.get("file")
     if not file_path:
@@ -218,9 +254,9 @@ def season_items(show_key: str, section_key: str = "") -> dict[str, Any]:
 
         folder = ""
         if file_path:
-            folder = str(Path(file_path).parent)
+            folder = plex_parent_path(file_path)
         elif show_folder:
-            folder = str(Path(show_folder) / season_folder_name(index))
+            folder = plex_join_path(show_folder, season_folder_name(index))
 
         seasons.append(
             {
@@ -532,31 +568,60 @@ def upload_plex_poster(item: dict[str, Any], content: bytes, content_type: str) 
     return {"mode": "plex", "ratingKey": rating_key, "bytes": str(len(content))}
 
 
+def rating_key_for_item(item: dict[str, Any]) -> str:
+    return str(item.get("ratingKey") or "")
+
+
+def append_warning(warnings: list[str], action: str, callback: Callable[[], None]) -> bool:
+    try:
+        callback()
+        return True
+    except AppError as exc:
+        warnings.append(f"{action}: {exc}")
+        return False
+
+
 def apply_poster(image_url: str, item: dict[str, Any], mode: str) -> dict[str, str | bool]:
     config = Config.load()
     content, content_type = fetch_image(image_url)
     overlay_label_removed = False
+    plex_update_warnings: list[str] = []
     if mode == "plex":
         result: dict[str, str | bool] = upload_plex_poster(item, content, content_type)
         if config.remove_overlay_label_on_apply:
-            remove_overlay_label(item)
-            overlay_label_removed = True
+            overlay_label_removed = append_warning(
+                plex_update_warnings,
+                "Overlay label removal failed",
+                lambda: remove_overlay_label(item),
+            )
+        rating_key = rating_key_for_item(item)
+        if rating_key:
+            append_warning(plex_update_warnings, "Plex refresh failed", lambda: refresh_item(rating_key))
     elif mode == "local":
         result = save_local_poster(image_url, item, content, content_type)
-        try:
-            if config.remove_overlay_label_on_apply:
-                remove_overlay_label(item)
-                overlay_label_removed = True
-            rating_key = str(item.get("ratingKey") or "")
-            if rating_key:
-                unlock_poster_field(item)
-                refresh_item(rating_key)
-        except AppError as exc:
-            result["plexUpdateError"] = str(exc)
+        if config.remove_overlay_label_on_apply:
+            overlay_label_removed = append_warning(
+                plex_update_warnings,
+                "Overlay label removal failed",
+                lambda: remove_overlay_label(item),
+            )
+        rating_key = rating_key_for_item(item)
+        if rating_key:
+            if item.get("type") == "season":
+                append_warning(
+                    plex_update_warnings,
+                    "Plex season poster upload failed",
+                    lambda: upload_plex_poster(item, content, content_type),
+                )
+            else:
+                append_warning(plex_update_warnings, "Poster field unlock failed", lambda: unlock_poster_field(item))
+            append_warning(plex_update_warnings, "Plex refresh failed", lambda: refresh_item(rating_key))
     else:
         raise AppError("Unknown poster apply mode.")
 
     result["overlayLabelRemoved"] = overlay_label_removed
+    if plex_update_warnings:
+        result["plexUpdateError"] = "; ".join(plex_update_warnings)
     return result
 
 
