@@ -99,7 +99,7 @@ class ApplyPosterTests(unittest.TestCase):
 
         self.assertEqual(result["mode"], "local")
         self.assertEqual(result["path"], r"D:\Movie\poster.jpg")
-        self.assertEqual(result["plexUpdateError"], "Request timed out after 8 seconds.")
+        self.assertEqual(result["plexUpdateError"], "Plex refresh failed: Request timed out after 8 seconds.")
 
     def test_plex_apply_removes_overlay_after_uploading_poster(self):
         calls = []
@@ -248,6 +248,21 @@ class LocalPosterFilenameTests(unittest.TestCase):
 
 
 class SaveLocalPosterTests(unittest.TestCase):
+    def test_rejects_an_unavailable_mapped_media_folder(self):
+        with TemporaryDirectory() as temp_dir:
+            folder = Path(temp_dir) / "missing-library-folder"
+
+            with patch.object(server, "media_folder", return_value=folder):
+                with self.assertRaisesRegex(server.AppError, "Mapped media folder is not available"):
+                    server.save_local_poster(
+                        "https://theposterdb.com/api/assets/1/view",
+                        {"type": "movie"},
+                        b"poster",
+                        "image/jpeg",
+                    )
+
+            self.assertFalse(folder.exists())
+
     def test_replaces_stale_movie_poster_extensions(self):
         with TemporaryDirectory() as temp_dir:
             folder = Path(temp_dir)

@@ -454,7 +454,7 @@ function renderPosters(posters, hasMore = false) {
         <button class="apply" type="button">${state.applyMode === "plex" ? "Set in Plex" : "Save poster file"}</button>
       </div>
     `;
-    card.querySelector(".apply").addEventListener("click", () => applyPoster(poster.imageUrl));
+    card.querySelector(".apply").addEventListener("click", () => run(() => applyPoster(poster.imageUrl)));
     elements.posterGrid.append(card);
   }
   if (hasMore && state.selectedTargetBaseUrl) {
@@ -488,10 +488,23 @@ function activeTargetButton() {
 async function applyPoster(imageUrl) {
   if (!state.selectedItem) return;
   setStatus(state.applyMode === "plex" ? "Uploading poster to Plex..." : "Saving poster file and refreshing Plex...");
-  const payload = await api("/api/apply", {
-    method: "POST",
-    body: JSON.stringify({ item: state.selectedItem, imageUrl, mode: state.applyMode }),
-  });
+  const controller = new AbortController();
+  const timeout = window.setTimeout(() => controller.abort(), 60000);
+  let payload;
+  try {
+    payload = await api("/api/apply", {
+      method: "POST",
+      signal: controller.signal,
+      body: JSON.stringify({ item: state.selectedItem, imageUrl, mode: state.applyMode }),
+    });
+  } catch (error) {
+    if (error.name === "AbortError") {
+      throw new Error("Poster save timed out after 60 seconds. Check that the mapped media path is available.");
+    }
+    throw error;
+  } finally {
+    window.clearTimeout(timeout);
+  }
   const posterStatus = payload.mode === "plex" ? "Poster set directly in Plex." : `Poster saved: ${payload.path}`;
   const overlayStatus = payload.overlayLabelRemoved ? " Kometa Overlay label removed." : "";
   const plexWarning = payload.plexUpdateError ? ` Plex update did not finish: ${payload.plexUpdateError}` : "";

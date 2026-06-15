@@ -546,7 +546,11 @@ def remove_stale_local_posters(folder: Path, destination: Path, stem: str) -> No
 def save_local_poster(image_url: str, item: dict[str, Any], content: bytes, content_type: str) -> dict[str, str]:
     extension = choose_extension(content_type, image_url)
     folder = media_folder(item)
-    folder.mkdir(parents=True, exist_ok=True)
+    if not folder.is_dir():
+        raise AppError(
+            f"Mapped media folder is not available: {folder}. "
+            "On Windows, make sure the drive is mounted for the user running the app or use a UNC path mapping."
+        )
     stem = local_poster_stem(item)
     destination = folder / f"{stem}{extension}"
     remove_stale_local_posters(folder, destination, stem)
