@@ -247,6 +247,20 @@ class LocalPosterFilenameTests(unittest.TestCase):
         self.assertEqual(server.local_poster_filename({"type": "show"}, ".jpg"), "poster.jpg")
 
 
+class ConfigPersistenceTests(unittest.TestCase):
+    def test_save_creates_config_directory(self):
+        with TemporaryDirectory() as temp_dir:
+            config_path = Path(temp_dir) / "nested" / "config.json"
+            config = server.Config(plex_url="http://plex:32400", plex_token="secret", path_mappings=[])
+
+            with patch.object(server, "CONFIG_PATH", config_path):
+                config.save()
+                loaded = server.Config.load()
+
+            self.assertEqual(loaded.plex_url, "http://plex:32400")
+            self.assertEqual(loaded.plex_token, "secret")
+
+
 class SaveLocalPosterTests(unittest.TestCase):
     def test_rejects_an_unavailable_mapped_media_folder(self):
         with TemporaryDirectory() as temp_dir:

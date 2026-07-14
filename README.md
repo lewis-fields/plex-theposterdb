@@ -36,6 +36,84 @@ To use another port:
 PORT=9000 python3 server.py
 ```
 
+## Docker and Unraid
+
+The repository publishes `linux/amd64` and `linux/arm64` images to GitHub
+Container Registry. Start the included Compose stack with:
+
+```bash
+docker compose up -d
+```
+
+Open `http://localhost:8765`. The app runs as an unprivileged user and stores its
+configuration in the persistent `poster-picker-config` volume. Compose publishes
+the port on the host's loopback interface by default because the app has no login
+screen and its saved Plex token is available to the web UI. To deliberately make
+it reachable from your network, set `BIND_ADDRESS=0.0.0.0` in a `.env` file and
+consider putting it behind an authenticated reverse proxy. Set `APP_PORT` there
+if the host port needs to be something other than `8765`.
+
+### Unraid setup
+
+In **Docker > Add Container**, switch to advanced view and configure:
+
+- **Repository:** `ghcr.io/lewis-fields/plex-theposterdb:latest`
+- **Network Type:** `Bridge`
+- **Web UI port:** container `8765`, with any available host port
+- **Appdata path:** `/mnt/user/appdata/plex-theposterdb` mapped to `/config`
+- **PUID:** `99`
+- **PGID:** `100`
+
+Add each media share as another read/write path only if you want the app to save
+poster files beside the media. Direct uploads to Plex do not need media paths.
+For example, map `/mnt/user/media/movies` to `/media/movies`, then configure the
+corresponding Plex-to-container path mapping in the app.
+
+The first successful GitHub Actions run creates the package. In its GitHub
+package settings, change the package visibility to **Public** so Unraid can pull
+it without registry credentials. After that, pushes to `main` update `latest`,
+and tags such as `v1.2.0` also publish `1.2.0` and `1.2` image tags.
+
+If Plex is another container, attach this service to the same Docker network and
+use the Plex service name for the Plex URL, for example `http://plex:32400`. If
+Plex runs on the Docker host, use `http://host.docker.internal:32400` on Docker
+Desktop. Linux Docker Engine deployments may also need this service setting:
+
+```yaml
+extra_hosts:
+  - "host.docker.internal:host-gateway"
+```
+
+Direct Plex uploads need no media mounts. To use **Save local poster file**, add
+the relevant media folders to `compose.yaml` and configure matching path mappings
+in the app:
+
+```yaml
+services:
+  poster-picker:
+    volumes:
+      - poster-picker-config:/config
+      - /srv/media/movies:/media/movies
+      - /srv/media/tv:/media/tv
+```
+
+For example, if Plex reports `/data/movies` but the mount above exposes the same
+files at `/media/movies`, add this mapping in the sidebar:
+
+```text
+/data/movies => /media/movies
+```
+
+The container drops privileges before starting. `PUID` and `PGID` control its
+runtime identity; use `99` and `100` on Unraid so it can use standard shares. The
+following environment variables are supported:
+
+- `HOST`: listen address (image default: `0.0.0.0`; local default: `127.0.0.1`)
+- `PORT`: HTTP port (default: `8765`)
+- `CONFIG_PATH`: configuration file path (image default: `/config/config.json`)
+- `PUID`: runtime user ID (default: `10001`; use `99` on Unraid)
+- `PGID`: runtime group ID (default: `10001`; use `100` on Unraid)
+
 ## Configure
 
 In the app sidebar:
