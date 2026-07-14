@@ -21,7 +21,7 @@ from typing import Any, Callable
 
 ROOT = Path(__file__).resolve().parent
 STATIC_ROOT = ROOT / "static"
-CONFIG_PATH = ROOT / "config.json"
+CONFIG_PATH = Path(os.environ.get("CONFIG_PATH", ROOT / "config.json"))
 TPDB_BASE = "https://theposterdb.com"
 TPDB_IMAGE_BASE = "https://images.theposterdb.com"
 TPDB_MAX_POSTER_PAGES = 12
@@ -64,6 +64,7 @@ class Config:
             "path_mappings": self.path_mappings or [],
             "remove_overlay_label_on_apply": self.remove_overlay_label_on_apply,
         }
+        CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
         with CONFIG_PATH.open("w", encoding="utf-8") as config_file:
             json.dump(payload, config_file, indent=2)
 
@@ -759,9 +760,10 @@ class Handler(BaseHTTPRequestHandler):
 
 
 def main() -> None:
+    host = os.environ.get("HOST", "127.0.0.1")
     port = int(os.environ.get("PORT", "8765"))
-    server = ThreadingHTTPServer(("127.0.0.1", port), Handler)
-    print(f"TPDb Plex Poster Picker running at http://127.0.0.1:{port}")
+    server = ThreadingHTTPServer((host, port), Handler)
+    print(f"TPDb Plex Poster Picker listening on {host}:{port}")
     server.serve_forever()
 
 

@@ -1,0 +1,18 @@
+services:
+  poster-picker:
+    image: ghcr.io/lewis-fields/plex-theposterdb:latest
+    pull_policy: always
+    restart: unless-stopped
+    environment:
+      PUID: "${PUID:-10001}"
+      PGID: "${PGID:-10001}"
+    ports:
+      - "${BIND_ADDRESS:-127.0.0.1}:${APP_PORT:-8765}:8765"
+    volumes:
+      - poster-picker-config:/config
+      # To save posters beside media, add one or more host bind mounts here,
+      # then map the Plex path to the container path in the app. For example:
+      # - /srv/media/movies:/media/movies
+
+volumes:
+  poster-picker-config:

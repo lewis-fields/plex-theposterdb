@@ -1,0 +1,11 @@
+.git
+.gitignore
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.coverage
+config.json
+tests/
+stop_server.py
+stop_server.sh
+README.md
