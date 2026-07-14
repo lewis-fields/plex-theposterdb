@@ -55,6 +55,40 @@ if the host port needs to be something other than `8765`.
 
 ### Unraid setup
 
+Example `compose.yaml` for the Unraid Compose Manager plugin:
+
+```yaml
+services:
+  poster-picker:
+    image: ghcr.io/lewis-fields/plex-theposterdb:latest
+    container_name: plex-theposterdb
+    pull_policy: always
+    restart: unless-stopped
+    environment:
+      PUID: "99"
+      PGID: "100"
+    ports:
+      - "8765:8765"
+    volumes:
+      - /mnt/user/appdata/plex-theposterdb:/config
+      # These media mounts are only needed for "Save local poster file".
+      # Change the host paths to match your Unraid shares.
+      - /mnt/user/media/movies:/media/movies
+      - /mnt/user/media/tv:/media/tv
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+```
+
+After starting the stack, open `http://UNRAID-IP:8765`. If Plex uses host
+networking, configure its URL as `http://host.docker.internal:32400`. If Plex and
+this app share a custom Docker network, use the Plex container name instead,
+such as `http://plex:32400`.
+
+The example media mounts expose the Unraid shares at `/media/movies` and
+`/media/tv` inside this container. Add matching path mappings in the app when
+Plex reports different paths, or remove both mounts if you only upload posters
+directly to Plex.
+
 In **Docker > Add Container**, switch to advanced view and configure:
 
 - **Repository:** `ghcr.io/lewis-fields/plex-theposterdb:latest`
@@ -69,10 +103,9 @@ poster files beside the media. Direct uploads to Plex do not need media paths.
 For example, map `/mnt/user/media/movies` to `/media/movies`, then configure the
 corresponding Plex-to-container path mapping in the app.
 
-The first successful GitHub Actions run creates the package. In its GitHub
-package settings, change the package visibility to **Public** so Unraid can pull
-it without registry credentials. After that, pushes to `main` update `latest`,
-and tags such as `v1.2.0` also publish `1.2.0` and `1.2` image tags.
+The GHCR package is public, so Unraid can pull it without registry credentials.
+Pushes to `main` update `latest`, and tags such as `v1.2.0` also publish `1.2.0`
+and `1.2` image tags.
 
 If Plex is another container, attach this service to the same Docker network and
 use the Plex service name for the Plex URL, for example `http://plex:32400`. If
